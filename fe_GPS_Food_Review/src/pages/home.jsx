@@ -13,7 +13,7 @@ const Home = ({ language, onReset }) => {
   const [inputMessage, setInputMessage] = useState("");
   const [location, setLocation] = useState(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
-
+const [restaurants, setRestaurants] = useState([]);
   // Lấy vị trí GPS của người dùng
   useEffect(() => {
     if (navigator.geolocation) {
@@ -67,7 +67,7 @@ const Home = ({ language, onReset }) => {
   return (
     <div className="home-container">
       {/* Bản đồ */}
-      <MapSection location={location} onReset={onReset} />
+      <MapSection location={location} onReset={onReset} restaurants={restaurants} />
 
       {/* Chat Bubble - Floating Widget */}
       {!isChatOpen && <ChatBubble onClick={() => setIsChatOpen(true)} />}
