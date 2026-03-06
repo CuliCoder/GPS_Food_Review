@@ -1,5 +1,5 @@
 import React from "react";
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 
 // Thành phần để tự động cập nhật tâm bản đồ khi vị trí thay đổi
@@ -10,6 +10,17 @@ const RecenterAutomatically = ({ lat, lng }) => {
   }, [lat, lng]);
   return null;
 };
+
+const vietnamIslandLabels = [
+  {
+    name: "Quần đảo Hoàng Sa (Việt Nam)",
+    position: [16.5, 112.0],
+  },
+  {
+    name: "Quần đảo Trường Sa (Việt Nam)",
+    position: [9.8, 114.2],
+  },
+];
 
 const MapSection = ({ location, restaurants, onReset }) => {
   // Tọa độ mặc định (ví dụ: TP.HCM) nếu chưa có location
@@ -49,6 +60,17 @@ const MapSection = ({ location, restaurants, onReset }) => {
                 <Popup>
                   <strong>{res.name}</strong> <br />
                   {res.address}
+                </Popup>
+              </Marker>
+            ))}
+
+            {vietnamIslandLabels.map((item) => (
+              <Marker key={item.name} position={item.position}>
+                <Tooltip permanent direction="top" offset={[0, -10]}>
+                  {item.name}
+                </Tooltip>
+                <Popup>
+                  <strong>{item.name}</strong>
                 </Popup>
               </Marker>
             ))}
