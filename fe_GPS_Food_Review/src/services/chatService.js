@@ -16,7 +16,7 @@ const sendMessageToGemini = async (question) => {
     }
 
     const data = await response.json();
-    return data.answer;
+    return data;
   } catch (error) {
     console.error("Chat Error:", error);
     return "Xin lỗi, không thể kết nối tới AI. Vui lòng thử lại!";

@@ -46,7 +46,6 @@ const [restaurants, setRestaurants] = useState([]);
 
       // Gọi API Gemini từ backend
       const reply = await sendMessageToGemini(userMsg);
-
       // Xóa "đang gõ..." và thêm reply thực tế
       setMessages((prev) => {
         const filtered = prev.filter((msg) => msg.text !== "Đang xử lý...");
@@ -55,6 +54,17 @@ const [restaurants, setRestaurants] = useState([]);
           { id: filtered.length + 1, text: reply, sender: "bot" },
         ];
       });
+      if (reply.audio) {
+        const audio = new Audio(reply.audio);
+        audio.volume = 0.8; // Điều chỉnh âm lượng
+        audio.play().catch(err => console.error("Lỗi phát audio:", err));
+      }
+      else {
+        console.log("Không có audio để phát");
+        const audio = new Audio("http://localhost:3000/audio/speech_1772807931252.mp3");
+        audio.volume = 0.8; // Điều chỉnh âm lượng
+        audio.play().catch(err => console.error("Lỗi phát audio:", err));
+      }
     }
   };
 
