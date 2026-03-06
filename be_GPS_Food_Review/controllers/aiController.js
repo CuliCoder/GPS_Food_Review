@@ -2,6 +2,7 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 require("dotenv").config();
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const foodVendors = require("../models/foods");
+const ttsController = require("./ttsController");
 const ask_gemini = async (req, res) => {
   const { question, language } = req.body;
   const context = JSON.stringify(foodVendors);
@@ -29,7 +30,9 @@ const ask_gemini = async (req, res) => {
   });
   const result = await model.generateContent(question);
   const response = await result.response;
-  res.json({ answer: response.text() });
+  const answer = JSON.parse(response.text());
+  const audioSpeech = await ttsController.generate_speech(answer.speech_text, language);
+  res.json({ answer: answer.display_text, audio: audioSpeech });
 };
 module.exports = {
   ask_gemini,
