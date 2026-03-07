@@ -1,40 +1,86 @@
 const gTTS = require("gtts");
-const path = require("path");
-const fs = require("fs");
 
-const generate_speech = (text, lang) => {
-  return new Promise((resolve, reject) => {
-    const gtts = new gTTS(text, lang);
-    const fileName = `speech_${Date.now()}.mp3`;
+const LANGUAGE_MAP = {
+  cn: "zh-cn",
+  zh: "zh-cn",
+  "zh-hans": "zh-cn",
+  "zh-hant": "zh-tw",
+  pt: "pt",
+  en: "en",
+  vi: "vi",
+  es: "es",
+  hi: "hi",
+  ar: "ar",
+  bn: "bn",
+  ru: "ru",
+  ja: "ja",
+  pa: "pa",
+  de: "de",
+  ko: "ko",
+  fr: "fr",
+  tr: "tr",
+};
 
-    // Đảm bảo thư mục lưu trữ tồn tại
-    const publicDir = path.join(__dirname, "../public/audio");
-    if (!fs.existsSync(publicDir)) {
-      fs.mkdirSync(publicDir, { recursive: true });
+const normalizeTtsLanguageCode = (languageCode) => {
+  if (!languageCode || typeof languageCode !== "string") {
+    return "en";
+  }
+
+  const normalized = languageCode.trim().toLowerCase();
+  return LANGUAGE_MAP[normalized] || normalized;
+};
+
+const streamSpeechToResponse = (text, languageCode, res) => {
+  const normalizedLanguageCode = normalizeTtsLanguageCode(languageCode);
+  const tts = new gTTS(text, normalizedLanguageCode);
+
+  res.setHeader("Content-Type", "audio/mpeg");
+  res.setHeader("Cache-Control", "no-store");
+
+  const stream = tts.stream();
+  stream.on("error", (error) => {
+    console.error("Lỗi stream TTS:", error);
+
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Không thể stream âm thanh" });
+      return;
     }
 
-    const filePath = path.join(publicDir, fileName);
-
-    gtts.save(filePath, (err) => {
-      if (err) {
-        console.error("Lỗi tạo TTS:", err);
-        reject(err);
-      } else {
-        resolve(`/audio/${fileName}`);
-      }
-    });
+    res.end();
   });
+
+  stream.pipe(res);
 };
 
-const return_speech = (req, res) => {
+const handleTtsRequest = (req, res) => {
   const text = req.query.text || "Hello, this is a text to speech test.";
-  const lang = req.query.lang || "en";
+  const languageCode = normalizeTtsLanguageCode(req.query.lang || "en");
 
-  generate_speech(text, lang)
-    .then((audioUrl) => res.json({ audioUrl }))
-    .catch((err) =>
-      res.status(500).json({ error: "Không thể tạo file âm thanh" }),
-    );
+  if (!text || typeof text !== "string") {
+    return res.status(400).json({ error: "Missing text" });
+  }
+
+  return streamSpeechToResponse(text, languageCode, res);
 };
 
-module.exports = { generate_speech, return_speech };
+const handleTtsStreamRequest = (req, res) => {
+  const { text, lang = "en" } = req.body || {};
+  const languageCode = normalizeTtsLanguageCode(lang);
+
+  if (!text || typeof text !== "string") {
+    return res.status(400).json({ error: "Missing text" });
+  }
+
+  return streamSpeechToResponse(text, languageCode, res);
+};
+
+module.exports = {
+  handleTtsRequest,
+  handleTtsStreamRequest,
+  streamSpeechToResponse,
+  normalizeTtsLanguageCode,
+  // Backward-compatible export names.
+  generateSpeechAudio: streamSpeechToResponse,
+  generate_speech: streamSpeechToResponse,
+  return_speech: handleTtsRequest,
+};

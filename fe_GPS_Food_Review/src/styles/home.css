@@ -32,18 +32,22 @@ body {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: radial-gradient(circle at 15% 20%, #ecf5ff 0%, #d5e8ff 35%, #a8c9f0 100%);
   position: relative;
+  padding: 14px;
 }
 
 .map-header {
-  background: rgba(0, 0, 0, 0.2);
-  color: white;
-  padding: 15px 20px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #10304f;
+  padding: 14px 18px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(16, 48, 79, 0.12);
+  border-radius: 16px 16px 0 0;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 6px 20px rgba(16, 48, 79, 0.1);
   flex-wrap: wrap;
   gap: 10px;
 }
@@ -59,18 +63,19 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px !important;
-  background: rgba(255, 255, 255, 0.2) !important;
-  border: 2px solid white !important;
-  color: white !important;
+  padding: 7px 14px !important;
+  background: #0a84ff !important;
+  border: 1px solid #0a84ff !important;
+  color: #ffffff !important;
   transition: all 0.3s ease;
   font-weight: 600;
+  box-shadow: 0 6px 14px rgba(10, 132, 255, 0.3);
 }
 
 .reset-btn:hover {
-  background: white !important;
-  color: #667eea !important;
-  transform: scale(1.05);
+  background: #0563bd !important;
+  border-color: #0563bd !important;
+  transform: translateY(-1px);
 }
 
 .reset-icon {
@@ -88,13 +93,18 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  border-radius: 0 0 20px 20px;
+  overflow: hidden;
+  border: 1px solid rgba(16, 48, 79, 0.12);
+  border-top: none;
+  box-shadow: 0 16px 40px rgba(16, 48, 79, 0.15);
 }
 
 .map-content {
   text-align: center;
-  color: white;
+  color: #10304f;
   animation: fadeInUp 0.5s ease-out;
+  font-weight: 600;
 }
 
 .map-content p {
@@ -104,8 +114,114 @@ body {
 
 .map-info {
   font-size: 1.2rem;
-  opacity: 0.8;
+  opacity: 0.7;
   margin-top: 20px;
+}
+
+/* Leaflet custom polish */
+.map-placeholder .leaflet-container {
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.map-placeholder .leaflet-control-zoom {
+  border: none !important;
+  border-radius: 12px !important;
+  box-shadow: 0 8px 18px rgba(17, 33, 50, 0.18);
+  overflow: hidden;
+}
+
+.map-placeholder .leaflet-control-zoom a {
+  color: #1f4a7b !important;
+  border: none !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  transition: background 0.2s ease;
+}
+
+.map-placeholder .leaflet-control-zoom a:hover {
+  background: #eaf3ff !important;
+}
+
+.map-placeholder .leaflet-popup-content-wrapper {
+  border-radius: 12px;
+  box-shadow: 0 12px 24px rgba(20, 37, 54, 0.2);
+}
+
+.map-placeholder .leaflet-popup-content {
+  margin: 10px 12px;
+  line-height: 1.5;
+}
+
+.custom-map-marker {
+  background: transparent;
+  border: none;
+}
+
+.custom-map-marker .marker-core {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+}
+
+.user-marker {
+  position: relative;
+}
+
+.user-marker .marker-core {
+  width: 14px;
+  height: 14px;
+  margin: 5px;
+  background: #0a84ff;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 8px rgba(10, 132, 255, 0.25);
+  animation: userPulse 1.8s infinite;
+}
+
+@keyframes userPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(10, 132, 255, 0.35);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(10, 132, 255, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(10, 132, 255, 0);
+  }
+}
+
+.restaurant-marker {
+  position: relative;
+}
+
+.restaurant-marker .marker-core {
+  width: 14px;
+  height: 14px;
+  margin: 2px auto 0;
+  background: #ff4b4b;
+  border: 2px solid #ffffff;
+  box-shadow: 0 3px 10px rgba(255, 75, 75, 0.35);
+  position: relative;
+  z-index: 1;
+}
+
+.restaurant-marker .marker-pin {
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: 12px solid #ff4b4b;
+  margin: -1px auto 0;
+  display: block;
+  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.25));
+}
+
+.island-marker .marker-core {
+  width: 10px;
+  height: 10px;
+  margin: 4px;
+  background: #1f6db6;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 8px rgba(31, 109, 182, 0.35);
 }
 
 /* Chat Bubble - Floating Button */
@@ -414,10 +530,6 @@ body {
     font-size: 1rem;
   }
 
-  .map-placeholder {
-    padding: 15px;
-  }
-
   .map-content p {
     font-size: 0.95rem;
   }
@@ -450,6 +562,7 @@ body {
 
   .map-full {
     height: 100vh;
+    padding: 10px;
   }
 
   .chat-widget-modal {
@@ -486,10 +599,6 @@ body {
     width: 100%;
     padding: 6px 10px;
     font-size: 0.8rem;
-  }
-
-  .map-placeholder {
-    padding: 10px;
   }
 
   .map-content p {
