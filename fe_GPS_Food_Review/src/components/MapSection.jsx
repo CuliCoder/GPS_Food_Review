@@ -1,114 +1,80 @@
-import React from "react";
-import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMap } from "react-leaflet";
-import L from "leaflet";
+import { useEffect } from "react";
+import { Circle, CircleMarker, MapContainer, Popup, TileLayer, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 
-// Thành phần để tự động cập nhật tâm bản đồ khi vị trí thay đổi
-const RecenterAutomatically = ({ lat, lng }) => {
+const RecenterMap = ({ location }) => {
   const map = useMap();
-  React.useEffect(() => {
-    map.setView([lat, lng]);
-  }, [lat, lng]);
+
+  useEffect(() => {
+    if (!location) {
+      return;
+    }
+    map.setView([location.lat, location.lng], 17, { animate: true });
+  }, [location, map]);
+
   return null;
 };
 
-const vietnamIslandLabels = [
-  {
-    name: "Quần đảo Hoàng Sa (Việt Nam)",
-    position: [16.5, 112.0],
-  },
-  {
-    name: "Quần đảo Trường Sa (Việt Nam)",
-    position: [9.8, 114.2],
-  },
-];
-
-const userMarkerIcon = L.divIcon({
-  className: "custom-map-marker user-marker",
-  html: '<span class="marker-core"></span>',
-  iconSize: [24, 24],
-  iconAnchor: [12, 12],
-});
-
-const restaurantMarkerIcon = L.divIcon({
-  className: "custom-map-marker restaurant-marker",
-  html: '<span class="marker-core"></span><span class="marker-pin"></span>',
-  iconSize: [30, 36],
-  iconAnchor: [15, 34],
-  popupAnchor: [0, -28],
-});
-
-const islandMarkerIcon = L.divIcon({
-  className: "custom-map-marker island-marker",
-  html: '<span class="marker-core"></span>',
-  iconSize: [18, 18],
-  iconAnchor: [9, 9],
-});
-
-const MapSection = ({ location, restaurants, onReset }) => {
-  // Tọa độ mặc định (ví dụ: TP.HCM) nếu chưa có location
-  const defaultPosition = [10.8231, 106.6297];
+const MapSection = ({ userLocation, foods, activeFood, onResetLanguage }) => {
+  const defaultCenter = [10.7723, 106.6982];
+  const center = userLocation ? [userLocation.lat, userLocation.lng] : defaultCenter;
 
   return (
-    <div className="map-full">
-      <div className="map-header">
-        <h3>📍 Bản Đồ Quán Ăn</h3>
-        {onReset && (
-          <button className="btn btn-sm btn-light reset-btn" onClick={onReset}>
-            Reset
-          </button>
-        )}
-      </div>
+    <section className="map-shell">
+      <header className="map-toolbar">
+        <div>
+          <p className="map-kicker">GPS Food Street</p>
+          <h2>Live Food Map</h2>
+        </div>
+        <button type="button" className="toolbar-btn" onClick={onResetLanguage}>
+          Change Language
+        </button>
+      </header>
 
-      <div className="map-placeholder" style={{ height: "100%", width: "100%" }}>
-        {location ? (
-          <MapContainer
-            center={[location.lat, location.lng]}
-            zoom={15}
-            minZoom={5}
-            maxZoom={19}
-            style={{ height: "100%", width: "100%" }}
-          >
-            <TileLayer
-              url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-              attribution='&copy; OpenStreetMap contributors &copy; CARTO'
-            />
-            
-            {/* Đánh dấu vị trí bản thân */}
-            <Marker position={[location.lat, location.lng]} icon={userMarkerIcon}>
-              <Popup>Bạn đang ở đây</Popup>
-            </Marker>
+      <div className="map-stage">
+        <MapContainer center={center} zoom={16} className="map-canvas">
+          <TileLayer
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          />
 
-            {/* Đánh dấu các quán ăn (truyền từ props) */}
-            {restaurants && restaurants.map((res, index) => (
-              <Marker key={index} position={[res.lat, res.lng]} icon={restaurantMarkerIcon}>
+          {userLocation && (
+            <>
+              <CircleMarker center={[userLocation.lat, userLocation.lng]} radius={8} pathOptions={{ color: "#1f6feb" }}>
+                <Popup>Your location</Popup>
+              </CircleMarker>
+              <Circle
+                center={[userLocation.lat, userLocation.lng]}
+                radius={25}
+                pathOptions={{ color: "#1f6feb", fillColor: "#1f6feb", fillOpacity: 0.08 }}
+              />
+            </>
+          )}
+
+          {foods.map((food) => {
+            const isActive = activeFood?.id === food.id;
+            return (
+              <CircleMarker
+                key={food.id}
+                center={[food.lat, food.lng]}
+                radius={isActive ? 11 : 8}
+                pathOptions={{ color: isActive ? "#cf3f00" : "#d84e0f" }}
+              >
                 <Popup>
-                  <strong>{res.name}</strong> <br />
-                  {res.address}
+                  <strong>{food.name}</strong>
+                  <br />
+                  {food.specialty}
+                  <br />
+                  {food.address}
                 </Popup>
-              </Marker>
-            ))}
+              </CircleMarker>
+            );
+          })}
 
-            {vietnamIslandLabels.map((item) => (
-              <Marker key={item.name} position={item.position} icon={islandMarkerIcon}>
-                <Tooltip permanent direction="top" offset={[0, -10]}>
-                  {item.name}
-                </Tooltip>
-                <Popup>
-                  <strong>{item.name}</strong>
-                </Popup>
-              </Marker>
-            ))}
-
-            <RecenterAutomatically lat={location.lat} lng={location.lng} />
-          </MapContainer>
-        ) : (
-          <div className="map-content">
-            <p>Đang lấy vị trí...</p>
-          </div>
-        )}
+          <RecenterMap location={userLocation} />
+        </MapContainer>
       </div>
-    </div>
+    </section>
   );
 };
 
