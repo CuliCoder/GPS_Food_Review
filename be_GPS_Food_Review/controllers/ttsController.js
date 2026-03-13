@@ -1,7 +1,6 @@
 const fs = require("fs");
 const path = require("path");
 const gTTS = require("gtts");
-const foods = require("../data/foods");
 const { normalizeLanguage, DEFAULT_LANGUAGE } = require("../utils/languages");
 const { formatFoodByLanguage } = require("./foodsController");
 

@@ -1,9 +1,9 @@
 require("dotenv").config();
 const OpenAI = require("openai");
-const foods = require("../data/foods");
 const { haversineDistanceMeters } = require("../utils/geo");
 const { normalizeLanguage } = require("../utils/languages");
 const { formatFoodByLanguage } = require("./foodsController");
+const Food = require("../models/foods");
 
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "stepfun/step-3.5-flash:free";
 
@@ -16,7 +16,7 @@ const client = new OpenAI({
   }
 });
 
-const buildFoodContext = (language, location) => {
+const buildFoodContext = (foods, language, location) => {
   const localizedFoods = foods.map((food) => formatFoodByLanguage(food, language));
 
   if (!location || Number.isNaN(location.lat) || Number.isNaN(location.lng)) {
@@ -50,30 +50,31 @@ const askAssistant = async (req, res) => {
     lng: Number(userLocation?.lng)
   };
 
-  const { localizedFoods, nearestFoods } = buildFoodContext(language, location);
-
-  const prompt = [
-    "You are a local food guide assistant for one food street zone.",
-    `Reply ONLY in language code: ${language}.`,
-    "Keep answer practical, warm, and concise (max 120 words).",
-    "If user asks unrelated things, gently redirect to food and nearby recommendations.",
-    "Data of food vendors:",
-    JSON.stringify(localizedFoods),
-    "Nearest foods to user right now:",
-    JSON.stringify(nearestFoods),
-    "Return JSON only with this shape:",
-    '{"answer":"...", "speechText":"..."}'
-  ].join("\n");
-
-  if (!process.env.OPENROUTER_API_KEY) {
-    const fallback = nearestFoods[0]
-      ? `Ban dang gan ${nearestFoods[0].name}. Goi y thu mon ${nearestFoods[0].specialty}.`
-      : "Toi co the goi y mon ngon trong khu pho am thuc nay. Ban thich vi nao?";
-
-    return res.json({ answer: fallback, speechText: fallback, language, fromFallback: true });
-  }
-
   try {
+    const foods = await Food.find({});
+    const { localizedFoods, nearestFoods } = buildFoodContext(foods, language, location);
+
+    const prompt = [
+      "You are a local food guide assistant for one food street zone.",
+      `Reply ONLY in language code: ${language}.`,
+      "Keep answer practical, warm, and concise (max 120 words).",
+      "If user asks unrelated things, gently redirect to food and nearby recommendations.",
+      "Data of food vendors:",
+      JSON.stringify(localizedFoods),
+      "Nearest foods to user right now:",
+      JSON.stringify(nearestFoods),
+      "Return JSON only with this shape:",
+      '{"answer":"...", "speechText":"..."}'
+    ].join("\n");
+
+    if (!process.env.OPENROUTER_API_KEY) {
+      const fallback = nearestFoods[0]
+        ? `Ban dang gan ${nearestFoods[0].name}. Goi y thu mon ${nearestFoods[0].specialty}.`
+        : "Toi co the goi y mon ngon trong khu pho am thuc nay. Ban thich vi nao?";
+
+      return res.json({ answer: fallback, speechText: fallback, language, fromFallback: true });
+    }
+
     const completion = await client.chat.completions.create({
       model: OPENROUTER_MODEL,
       temperature: 0.3,
@@ -98,6 +99,7 @@ const askAssistant = async (req, res) => {
 
     return res.json({ answer, speechText, language });
   } catch (error) {
+    console.error('Error fetching foods:', error);
     return res.status(500).json({
       error: "AI service error",
       detail: error?.message || "Unknown error"
