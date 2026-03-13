@@ -1,16 +1,19 @@
+const fs = require("fs");
+const path = require("path");
 const gTTS = require("gtts");
+const { normalizeLanguage, DEFAULT_LANGUAGE } = require("../utils/languages");
+const { formatFoodByLanguage } = require("./foodsController");
 
-const LANGUAGE_MAP = {
-  cn: "zh-cn",
+const AUDIO_DIR = path.join(__dirname, "..", "public", "audio");
+
+const TTS_LANGUAGE_MAP = {
   zh: "zh-cn",
-  "zh-hans": "zh-cn",
-  "zh-hant": "zh-tw",
-  pt: "pt",
-  en: "en",
   vi: "vi",
+  en: "en",
   es: "es",
   hi: "hi",
   ar: "ar",
+  pt: "pt",
   bn: "bn",
   ru: "ru",
   ja: "ja",
@@ -18,69 +21,86 @@ const LANGUAGE_MAP = {
   de: "de",
   ko: "ko",
   fr: "fr",
-  tr: "tr",
+  tr: "tr"
 };
 
-const normalizeTtsLanguageCode = (languageCode) => {
-  if (!languageCode || typeof languageCode !== "string") {
-    return "en";
+if (!fs.existsSync(AUDIO_DIR)) {
+  fs.mkdirSync(AUDIO_DIR, { recursive: true });
+}
+
+const getTtsLanguage = (language) => TTS_LANGUAGE_MAP[normalizeLanguage(language)] || "en";
+
+const createFoodNarrationText = (food, language) => {
+  const localizedFood = formatFoodByLanguage(food, language);
+  return `${localizedFood.name}. ${localizedFood.specialty}. ${localizedFood.description}.`;
+};
+
+const saveTextToMp3 = (text, language, filePath) => {
+  const tts = new gTTS(text, getTtsLanguage(language));
+  return new Promise((resolve, reject) => {
+    tts.save(filePath, (error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+};
+
+const getFoodAudio = async (req, res) => {
+  const { foodId } = req.params;
+  const language = normalizeLanguage(req.query.lang || DEFAULT_LANGUAGE);
+
+  const food = foods.find((item) => item.id === foodId);
+  if (!food) {
+    return res.status(404).json({ error: "food not found" });
   }
 
-  const normalized = languageCode.trim().toLowerCase();
-  return LANGUAGE_MAP[normalized] || normalized;
+  const fileName = `${food.id}_${language}.mp3`;
+  const filePath = path.join(AUDIO_DIR, fileName);
+
+  try {
+    if (!fs.existsSync(filePath)) {
+      const narrationText = createFoodNarrationText(food, language);
+      await saveTextToMp3(narrationText, language, filePath);
+    }
+
+    return res.json({
+      foodId,
+      language,
+      audioUrl: `/audio/${fileName}`
+    });
+  } catch (error) {
+    return res.status(500).json({ error: "cannot render tts", detail: error?.message });
+  }
 };
 
-const streamSpeechToResponse = (text, languageCode, res) => {
-  const normalizedLanguageCode = normalizeTtsLanguageCode(languageCode);
-  const tts = new gTTS(text, normalizedLanguageCode);
+const streamCustomTextTts = (req, res) => {
+  const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
+  const language = normalizeLanguage(req.body?.lang || DEFAULT_LANGUAGE);
 
+  if (!text) {
+    return res.status(400).json({ error: "text is required" });
+  }
+
+  const tts = new gTTS(text, getTtsLanguage(language));
   res.setHeader("Content-Type", "audio/mpeg");
   res.setHeader("Cache-Control", "no-store");
 
   const stream = tts.stream();
   stream.on("error", (error) => {
-    console.error("Lỗi stream TTS:", error);
-
     if (!res.headersSent) {
-      res.status(500).json({ error: "Không thể stream âm thanh" });
+      res.status(500).json({ error: "cannot stream tts", detail: error?.message });
       return;
     }
-
     res.end();
   });
 
   stream.pipe(res);
 };
 
-const handleTtsRequest = (req, res) => {
-  const text = req.query.text || "Hello, this is a text to speech test.";
-  const languageCode = normalizeTtsLanguageCode(req.query.lang || "en");
-
-  if (!text || typeof text !== "string") {
-    return res.status(400).json({ error: "Missing text" });
-  }
-
-  return streamSpeechToResponse(text, languageCode, res);
-};
-
-const handleTtsStreamRequest = (req, res) => {
-  const { text, lang = "en" } = req.body || {};
-  const languageCode = normalizeTtsLanguageCode(lang);
-
-  if (!text || typeof text !== "string") {
-    return res.status(400).json({ error: "Missing text" });
-  }
-
-  return streamSpeechToResponse(text, languageCode, res);
-};
-
 module.exports = {
-  handleTtsRequest,
-  handleTtsStreamRequest,
-  streamSpeechToResponse,
-  normalizeTtsLanguageCode,
-  // Backward-compatible export names.
-  generateSpeechAudio: streamSpeechToResponse,
-  generate_speech: streamSpeechToResponse,
-  return_speech: handleTtsRequest,
+  getFoodAudio,
+  streamCustomTextTts
 };

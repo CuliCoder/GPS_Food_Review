@@ -1,35 +1,33 @@
-// src/App.jsx
-import React, { useState } from "react";
+import { useState } from "react";
 import SelectLanguage from "./pages/selectLanguage";
 import Home from "./pages/home";
 
+const STORAGE_KEY = "gps_food_language";
+
 const App = () => {
-  const [isLanguageSelected, setIsLanguageSelected] = useState(() => {
-    return !!localStorage.getItem("selectedLanguage");
-  });
+  const [language, setLanguage] = useState(() => localStorage.getItem(STORAGE_KEY) || "");
 
-  const [selectedLanguage, setSelectedLanguage] = useState(() => {
-    return localStorage.getItem("selectedLanguage") || "";
-  });
-
-  const handleLanguageSelected = (language) => {
-    setSelectedLanguage(language);
-    setIsLanguageSelected(true);
+  const handleLanguageSelected = (nextLanguage) => {
+    localStorage.setItem(STORAGE_KEY, nextLanguage);
+    setLanguage(nextLanguage);
   };
 
-  const handleReset = () => {
-    localStorage.removeItem("selectedLanguage");
-    setIsLanguageSelected(false);
-    setSelectedLanguage("");
+  const handleResetLanguage = () => {
+    localStorage.removeItem(STORAGE_KEY);
+    setLanguage("");
   };
 
-  // Nếu chưa chọn ngôn ngữ, hiển thị SelectLanguage
-  if (!isLanguageSelected) {
-    return <SelectLanguage onLanguageSelected={handleLanguageSelected} />;
+  if (!language) {
+    return <SelectLanguage onSelect={handleLanguageSelected} />;
   }
 
-  // Nếu đã chọn, hiển thị Home
-  return <Home language={selectedLanguage} onReset={handleReset} />;
+  return (
+    <Home
+      language={language}
+      onChangeLanguage={handleLanguageSelected}
+      onResetLanguage={handleResetLanguage}
+    />
+  );
 };
 
 export default App;

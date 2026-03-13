@@ -1,13 +1,23 @@
-const foodVendors = [
-  {
-    name: "Phở Gia Truyền",
-    dish: "Phở bò",
-    desc: "Nước dùng ngọt thanh, thịt bò mềm.",
+const mongoose = require('mongoose');
+
+const foodSchema = new mongoose.Schema({
+  id: { type: String, required: true, unique: true },
+  coordinate: {
+    lat: { type: Number, required: true },
+    lng: { type: Number, required: true }
   },
-  {
-    name: "Bánh Mì Hội An",
-    dish: "Bánh mì thập cẩm",
-    desc: "Nổi tiếng với nước sốt đặc trưng.",
-  },
-];
-module.exports = foodVendors;
+  radiusMeters: { type: Number, required: true },
+  imageUrl: { type: String, required: true },
+  translations: {
+    type: Object,
+    of: {
+      name: String,
+      specialty: String,
+      description: String,
+      address: String
+    },
+    required: true
+  }
+});
+
+module.exports = mongoose.model('Food', foodSchema);

@@ -1,14 +1,13 @@
-// Chat Service - Gọi API Gemini từ Backend
-const API_BASE_URL = "http://localhost:3000";
+import { buildApiUrl } from "./apiClient";
 
-const requestAssistantReply = async (question, language = "vi") => {
+const requestAssistantReply = async (question, language = "vi", location = null) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/ask-assistant`, {
+    const response = await fetch(buildApiUrl("/api/chat"), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ question, language }),
+      body: JSON.stringify({ question, language, location }),
     });
 
     if (!response.ok) {
@@ -17,14 +16,14 @@ const requestAssistantReply = async (question, language = "vi") => {
 
     const data = await response.json();
     return {
-      answer: data?.answer || "Xin lỗi, tôi chưa có phản hồi phù hợp.",
+      answer: data?.answer || "Xin loi, toi chua co phan hoi phu hop.",
       speechText: data?.speechText || data?.answer || "",
       language: data?.language || language,
     };
   } catch (error) {
     console.error("Chat Error:", error);
     return {
-      answer: "Xin lỗi, không thể kết nối tới AI. Vui lòng thử lại!",
+      answer: "Khong the ket noi AI. Vui long thu lai.",
       speechText: "",
       language,
     };

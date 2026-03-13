@@ -1,14 +1,12 @@
-import React from "react";
-
 const ChatBubble = ({ onClick }) => {
   return (
     <button
       className="chat-bubble"
       onClick={onClick}
-      title="Mở chat"
-      aria-label="Mở trợ lý chat"
+      title="Open chat"
+      aria-label="Open assistant chat"
     >
-      💬
+      AI
     </button>
   );
 };

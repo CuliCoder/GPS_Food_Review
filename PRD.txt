@@ -1,0 +1,82 @@
+PRODUCT REQUIREMENTS DOCUMENT (PRD)
+Tên dự án: Web App Bản đồ Ẩm thực Thông minh
+Nền tảng: Web Application (Mobile-first design)
+Tech Stack Chính: React (Frontend), Node.js & Express.js (Backend)
+
+1. Tổng quan dự án (Project Overview)
+Ứng dụng web bản đồ tương tác sử dụng API Geolocation để hỗ trợ khách tham quan khám phá ẩm thực. Hệ thống cung cấp trải nghiệm rảnh tay thông qua tính năng nhận diện khoảng cách (proximity detection) để tự động phát audio thuyết minh đa ngôn ngữ, kết hợp với trợ lý AI Chatbot tư vấn món ăn trực tiếp theo ngữ cảnh thực tế.
+
+2. Phạm vi & Giới hạn (Scope & Boundaries)
+Vùng hoạt động: Giới hạn địa lý (Geofencing) trong 1 khu vực/phố ẩm thực duy nhất.
+
+Ngôn ngữ: Hỗ trợ 15 ngôn ngữ phổ biến (Bắt buộc có Tiếng Việt và Tiếng Anh). Giao diện, Audio thuyết minh và AI Chatbot đều đồng bộ theo ngôn ngữ được chọn.
+
+Môi trường chạy: Trình duyệt web trên thiết bị di động. Bắt buộc chạy trên giao thức HTTPS để được cấp quyền sử dụng GPS (Geolocation API) và Audio.
+
+3. Chân dung người dùng (User Personas)
+Khách du lịch (Quốc tế & Nội địa): Cần vượt qua rào cản ngôn ngữ, thích nghe giới thiệu tự động khi đi dạo thay vì phải cắm mặt đọc chữ trên điện thoại.
+
+Người yêu ẩm thực (Foodie): Cần được AI tư vấn nhanh chóng các món ăn dựa trên sở thích cá nhân hoặc các quán ăn đang có mặt trong khu vực.
+
+4. Yêu cầu chức năng (Functional Requirements - FR)
+4.1. Hệ thống Bản đồ & Định vị (Map & GPS)
+FR1: Hiển thị bản đồ khu ẩm thực, gắn Marker tọa độ cho các quán ăn có trong hệ thống.
+
+FR2: Tracking vị trí người dùng realtime bằng HTML5 Geolocation API (watchPosition).
+
+FR3: Liên tục tính toán khoảng cách tuyến tính từ tọa độ hiện tại của người dùng đến tọa độ của các quán ăn xung quanh.
+
+4.4. Thuyết minh tự động (Proximity Audio)
+FR4: Khi người dùng bước vào bán kính quy định (ví dụ: <= 10 mét) của một quán ăn, hệ thống kích hoạt hiển thị Popup thông tin (Tên quán, hình ảnh, món đặc trưng).
+
+FR5: Tự động phát audio thuyết minh mô tả quán ăn bằng ngôn ngữ đang chọn.
+
+FR6: Cung cấp UI điều khiển Audio cơ bản: Play, Pause, Mute.
+
+FR7: Cơ chế Anti-Spam: Không phát lặp lại liên tục audio của cùng một quán nếu người dùng đứng yên tại đó (cần có khoảng thời gian cooldown hoặc chỉ phát 1 lần cho mỗi lượt tiếp cận).
+
+4.3. Trợ lý ảo AI (AI Chatbot)
+FR8: Nút Chatbox dạng nổi (Floating Action Button) có thể truy cập mọi lúc trên màn hình.
+
+FR9: Giao tiếp linh hoạt bằng 15 ngôn ngữ.
+
+FR10: Context-Aware (Hiểu ngữ cảnh): AI biết được danh sách các quán ăn trong khu vực và vị trí hiện tại của người dùng để đưa ra lời khuyên chính xác.
+
+4.4. Đổi ngôn ngữ (Multilingual Switcher)
+FR11: Dropdown chọn 1 trong 15 ngôn ngữ. Khi thay đổi, toàn bộ hệ thống (Text UI, Data quán ăn, Voice Audio, AI Chatbot) phải lập tức cập nhật theo ngôn ngữ mới.
+
+5. Kiến trúc hệ thống & Quyết định Công nghệ (System Architecture)
+Sự phân chia nhiệm vụ rõ ràng giữa Frontend và Backend để đảm bảo hiệu năng, bảo mật API Key và tối ưu chi phí.
+
+5.1. Frontend (React)
+UI/UX: Component-based, responsive cho màn hình dọc của điện thoại.
+
+Bản đồ: Sử dụng thư viện như react-map-gl (Mapbox) hoặc react-google-maps.
+
+State Management: Quản lý State tập trung cho Tọa độ GPS, Ngôn ngữ hiện tại và Trạng thái Audio đang phát.
+
+5.2. Backend (Node.js + Express.js) & Dịch vụ tích hợp
+Backend đóng vai trò là Server trung gian xử lý logic nặng và gọi API bên thứ 3, tuyệt đối không để lộ API Key dưới Frontend.
+
+Database (Khuyến nghị MongoDB): Lưu thông tin quán ăn, tọa độ GPS (hỗ trợ 2dsphere index để query không gian) và các bản dịch text mô tả bằng 15 ngôn ngữ.
+
+Hệ thống Thuyết minh (Sử dụng thư viện gtts):
+
+Hoàn toàn miễn phí, không giới hạn request, hỗ trợ đầy đủ 15 ngôn ngữ.
+
+Luồng xử lý: Khi Frontend báo người dùng đến gần Quán A + Ngôn ngữ = en, Backend lấy nội dung tiếng Anh của Quán A từ Database, dùng gtts render thành file .mp3.
+
+Tối ưu (Caching): Backend lưu tạm file mp3 này lại. Các request sau trùng khớp Quán + Ngôn ngữ sẽ được trả về file có sẵn thay vì render lại, giúp tăng tốc độ phản hồi và giảm tải server.
+
+Hệ thống AI Chatbot (Sử dụng OpenRouter qua openai SDK):
+
+Sử dụng OpenRouter để linh hoạt chọn các Model AI (như Claude 3, Llama 3, v.v.) mà không bị giới hạn địa lý hay block API.
+
+Luồng xử lý: Frontend gửi câu hỏi của user -> Backend gắn thêm "System Prompt" (chứa thông tin khu ẩm thực, quán ăn, yêu cầu phản hồi bằng ngôn ngữ X) -> Backend dùng openai client (với baseURL trỏ về OpenRouter) gọi API -> Trả kết quả về cho Frontend hiển thị.
+
+6. Yêu cầu phi chức năng (Non-Functional Requirements - NFR)
+Bảo mật: Backend thiết lập CORS chặt chẽ. Đưa biến OPENROUTER_API_KEY vào file .env.
+
+Độ trễ (Latency): Phản hồi từ AI Chatbot < 3-5 giây. Audio từ gtts (nếu đã cache) trả về < 1 giây.
+
+Xử lý lỗi GPS: Hiển thị thông báo thân thiện (ví dụ: "Đang tìm tín hiệu GPS...") khi thiết bị mất kết nối hoặc sai số quá lớn.
