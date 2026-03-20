@@ -1,0 +1,16 @@
+packages:
+  "react-leaflet": "React components for Leaflet maps"
+  "leaflet": "Interactive maps library"
+  "@types/leaflet": "TypeScript definitions for Leaflet"
+  "framer-motion": "Animations for page transitions and chatbox"
+  "zustand": "Lightweight global state management for language, fake GPS, and audio tracking"
+
+images:
+  - path: "artifacts/smart-food-tour/public/images/landing-bg.png"
+    description: "Vibrant warm abstract food illustration background with subtle spices, soft gradient mesh in orange, amber, and cream, modern travel app style"
+    aspect_ratio: "16:9"
+
+notes:
+  - "The app relies on a fake GPS system controlled by clicking the map."
+  - "Since actual audio files aren't provided, Web Speech API (TTS) is used for audio playback."
+  - "Leaflet CSS is imported in index.css to ensure map renders correctly."
