@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, CheckSquare, Store, Users, Map,
   BarChart2, Settings, LogOut, ShieldCheck, TrendingUp,
-  Volume2, Globe, Check, X, AlertTriangle, Menu,
+  Volume2, Globe, Check, X, AlertTriangle, Menu, Trash2,
 } from "lucide-react";
 import {
   BarChart, Bar, AreaChart, Area, PieChart, Pie, Cell,
@@ -13,7 +13,7 @@ import {
 } from "recharts";
 import {
   useAdminStats, useAdminUsers, useAdminPending, useAdminVenues,
-  useAdminApprovePending, useAdminUpdateUserStatus,
+  useAdminApprovePending, useAdminUpdateUserStatus, useApprovePoi, useRejectPoi, useDeletePoi,
 } from "@/lib/api";
 import { useAppStore } from "@/store/use-app-store";
 
@@ -66,17 +66,24 @@ export default function AdminDashboard() {
   const { data: venues }      = useAdminVenues();
 
   const approveMutation    = useAdminApprovePending();
+  const approvePoiMutation = useApprovePoi();
+  const rejectPoiMutation  = useRejectPoi();
+  const deletePoiMutation  = useDeletePoi();
   const userStatusMutation = useAdminUpdateUserStatus();
 
-  const handleApprove = (id) =>
-    approveMutation.mutate({ id, action: "approve" });
+  const handleApprove = (id) => approvePoiMutation.mutate(id);
 
   const handleReject = () => {
     if (!rejectModal) return;
-    approveMutation.mutate(
-      { id: rejectModal.id, action: "reject", reason: rejectModal.reason },
+    rejectPoiMutation.mutate(
+      { id: rejectModal.id, reason: rejectModal.reason },
       { onSuccess: () => setRejectModal(null) }
     );
+  };
+
+  const handleDeleteVenue = (id) => {
+    if (!confirm("Xóa quán này vĩnh viễn?")) return;
+    deletePoiMutation.mutate({ id, isAdmin: true });
   };
 
   const handleUserStatus = (id, status) =>
@@ -307,6 +314,10 @@ export default function AdminDashboard() {
                     v.status === "pending" ? "bg-yellow-100 text-yellow-700" :
                     "bg-red-100 text-red-700"
                   }`}>{v.status}</span>
+                  <button onClick={() => handleDeleteVenue(v.id)}
+                    className="p-1.5 text-red-400 hover:bg-red-50 rounded-lg transition-colors shrink-0">
+                    <Trash2 size={14} />
+                  </button>
                 </div>
               ))}
             </div>
