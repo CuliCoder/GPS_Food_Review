@@ -5,6 +5,7 @@ import languagesRouter from "./languages.js";
 import chatRouter from "./chat.js";
 import authRouter from "./auth.js";
 import audioRouter from "./audio.js";
+import poisRouter from "./pois.js";
 
 const router = Router();
 
@@ -14,5 +15,6 @@ router.use(languagesRouter);
 router.use(chatRouter);
 router.use(authRouter);
 router.use("/audio", audioRouter);
+router.use(poisRouter);
 
 export default router;

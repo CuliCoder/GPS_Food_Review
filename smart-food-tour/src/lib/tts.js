@@ -1,23 +1,52 @@
 /**
- * Audio playback — ưu tiên gTTS từ BE, fallback Web Speech API
+ * Audio playback — gTTS stream từ BE
+ * Tự động dừng khi rời khỏi phạm vi hoặc unmount
  */
 
 let currentAudio = null;
+let currentVenueId = null;
+
+// Unlock AudioContext sau lần tương tác đầu tiên của user
+let audioUnlocked = false;
+export function unlockAudio() {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+  // Tạo và resume AudioContext để unlock autoplay policy
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    ctx.resume().then(() => ctx.close());
+  } catch {}
+}
 
 /**
- * Phát audio từ BE (gTTS stream)
- * @param {string} url - URL audio stream từ BE
- * @param {function} onEnd - callback khi audio kết thúc
+ * Phát audio từ URL (gTTS stream)
+ * @returns {HTMLAudioElement}
  */
-export const playAudioFromUrl = (url, onEnd) => {
-  stopAudioTranscript();
+export const playAudioFromUrl = (url, venueId, { onEnd, onError } = {}) => {
+  // Dừng audio đang phát nếu khác venue
+  if (currentAudio && currentVenueId !== venueId) {
+    stopAudioTranscript();
+  }
+  // Nếu đang phát cùng venue thì không phát lại
+  if (currentVenueId === venueId && currentAudio && !currentAudio.paused) return currentAudio;
 
   currentAudio = new Audio(url);
+  currentVenueId = venueId;
 
-  if (onEnd) currentAudio.addEventListener("ended", onEnd);
+  currentAudio.addEventListener("ended", () => {
+    currentVenueId = null;
+    onEnd?.();
+  });
+  currentAudio.addEventListener("error", (e) => {
+    console.error("Audio error:", e);
+    currentVenueId = null;
+    onError?.(e);
+  });
 
   currentAudio.play().catch((err) => {
     console.error("Audio play error:", err);
+    currentVenueId = null;
+    onError?.(err);
   });
 
   return currentAudio;
@@ -29,17 +58,20 @@ export const playAudioFromUrl = (url, onEnd) => {
 export const stopAudioTranscript = () => {
   if (currentAudio) {
     currentAudio.pause();
-    currentAudio.currentTime = 0;
+    currentAudio.src = "";
     currentAudio = null;
   }
-  if (window.speechSynthesis) {
-    window.speechSynthesis.cancel();
-  }
+  currentVenueId = null;
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
 };
 
 /**
+ * Lấy venue đang phát
+ */
+export const getCurrentPlayingVenueId = () => currentVenueId;
+
+/**
  * Fallback: Web Speech API
- * Dùng khi venue không có audio transcript
  */
 const LANG_BCP47 = {
   vi: "vi-VN", en: "en-US", zh: "zh-CN", ja: "ja-JP", ko: "ko-KR",
@@ -50,23 +82,16 @@ const LANG_BCP47 = {
 export const playAudioTranscript = (text, lang = "en") => {
   if (!window.speechSynthesis) return;
   stopAudioTranscript();
-
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = LANG_BCP47[lang] || lang;
   utterance.rate = lang === "vi" ? 0.85 : 0.95;
-
   const loadAndSpeak = () => {
-    const voices = window.speechSynthesis.getVoices();
-    const voice = voices.find((v) =>
-      v.lang.toLowerCase().startsWith(lang.toLowerCase())
-    );
+    const voice = window.speechSynthesis.getVoices()
+      .find(v => v.lang.toLowerCase().startsWith(lang.toLowerCase()));
     if (voice) utterance.voice = voice;
     window.speechSynthesis.speak(utterance);
   };
-
-  if (window.speechSynthesis.getVoices().length > 0) {
-    loadAndSpeak();
-  } else {
-    window.speechSynthesis.onvoiceschanged = loadAndSpeak;
-  }
+  window.speechSynthesis.getVoices().length > 0
+    ? loadAndSpeak()
+    : (window.speechSynthesis.onvoiceschanged = loadAndSpeak);
 };
