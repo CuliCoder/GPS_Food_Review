@@ -55,6 +55,7 @@ export default function VendorDashboard() {
   const [form, setForm] = useState({
     name: "", category: "vietnamese", address: "",
     lat: "", lng: "", priceRange: "$", phone: "", description: "",
+    sourceLang: "vi",
   });
   const [formError, setFormError] = useState("");
   const [formSuccess, setFormSuccess] = useState("");
@@ -271,13 +272,34 @@ export default function VendorDashboard() {
               {formError && <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-sm">{formError}</div>}
               {formSuccess && <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-green-700 text-sm">{formSuccess}</div>}
 
+              {/* Thông báo AI dịch tự động */}
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex gap-2">
+                <span className="text-lg">🤖</span>
+                <p className="text-xs text-blue-700">
+                  AI sẽ tự động dịch tên và mô tả quán sang <strong>15 ngôn ngữ</strong> sau khi bạn đăng ký.
+                </p>
+              </div>
+
+              {/* Ngôn ngữ nhập */}
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-gray-700">Bạn đang nhập bằng ngôn ngữ nào?</label>
+                <select value={form.sourceLang} onChange={e => handleField("sourceLang", e.target.value)}
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-300 text-sm">
+                  <option value="vi">🇻🇳 Tiếng Việt</option>
+                  <option value="en">🇬🇧 English</option>
+                  <option value="zh">🇨🇳 中文</option>
+                  <option value="ja">🇯🇵 日本語</option>
+                  <option value="ko">🇰🇷 한국어</option>
+                  <option value="fr">🇫🇷 Français</option>
+                </select>
+              </div>
+
               {[
                 { label: "Tên quán *", key: "name", placeholder: "Phở Ngon Số 1" },
                 { label: "Địa chỉ *",  key: "address", placeholder: "26 Lê Lợi, Quận 1, TP.HCM" },
                 { label: "Vĩ độ (lat) *", key: "lat", placeholder: "10.7769", type: "number" },
                 { label: "Kinh độ (lng) *", key: "lng", placeholder: "106.7009", type: "number" },
                 { label: "Số điện thoại", key: "phone", placeholder: "028 3821 1234" },
-                { label: "Mô tả", key: "description", placeholder: "Mô tả ngắn về quán..." },
               ].map(({ label, key, placeholder, type }) => (
                 <div key={key} className="space-y-1">
                   <label className="text-sm font-medium text-gray-700">{label}</label>
@@ -286,6 +308,16 @@ export default function VendorDashboard() {
                     className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-300 text-sm" />
                 </div>
               ))}
+
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-gray-700">Mô tả quán (AI sẽ dịch tự động)</label>
+                <textarea
+                  placeholder="Mô tả hấp dẫn về quán của bạn..."
+                  value={form.description}
+                  onChange={e => handleField("description", e.target.value)}
+                  rows={3}
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-300 text-sm resize-none"
+                /></div>
 
               <div className="space-y-1">
                 <label className="text-sm font-medium text-gray-700">Danh mục</label>
@@ -309,9 +341,14 @@ export default function VendorDashboard() {
 
               <button onClick={handleRegister} disabled={createPoi.isPending}
                 className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
-                {createPoi.isPending
-                  ? <span className="animate-spin border-2 border-white border-t-transparent rounded-full w-4 h-4" />
-                  : <><Plus size={16} /> Đăng ký quán</>}
+                {createPoi.isPending ? (
+                  <>
+                    <span className="animate-spin border-2 border-white border-t-transparent rounded-full w-4 h-4" />
+                    🌐 Đang dịch sang 15 ngôn ngữ...
+                  </>
+                ) : (
+                  <><Plus size={16} /> Đăng ký quán</>
+                )}
               </button>
 
               <p className="text-xs text-gray-400 text-center">

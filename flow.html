@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Food Tour — Lược đồ tuần tự</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8f7f4;color:#1a1a1a}
+header{background:#18181b;color:white;padding:18px 28px}
+header h1{font-size:17px;font-weight:500}
+header p{font-size:12px;color:#71717a;margin-top:3px}
+.tabs{display:flex;background:white;border-bottom:1px solid #e4e4e7;padding:0 24px;overflow-x:auto}
+.tab{padding:11px 18px;font-size:13px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;color:#71717a;transition:all .15s;white-space:nowrap;background:none;border-top:none;border-left:none;border-right:none}
+.tab:hover{color:#18181b}
+.tab.active{color:#f97316;border-bottom-color:#f97316}
+.content{padding:20px 24px;overflow-x:auto}
+svg{display:block}
+.legend{display:flex;gap:20px;margin-top:14px;padding-top:12px;border-top:1px solid #e4e4e7;flex-wrap:wrap}
+.li{display:flex;align-items:center;gap:7px;font-size:11px;color:#71717a}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Smart Food Tour — Lược đồ tuần tự</h1>
+  <p>Mô tả luồng giao tiếp Client ↔ Server theo từng tính năng</p>
+</header>
+
+<div class="tabs" id="tabs"></div>
+
+<div class="content">
+  <svg id="diagram" width="100%"></svg>
+  <div class="legend">
+    <div class="li">
+      <svg width="36" height="10"><defs><marker id="la" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M2 1L8 5L2 9" fill="none" stroke="#185FA5" stroke-width="1.5"/></marker></defs><line x1="0" y1="5" x2="30" y2="5" stroke="#185FA5" stroke-width="1.5" marker-end="url(#la)"/></svg>
+      <span>Request</span>
+    </div>
+    <div class="li">
+      <svg width="36" height="10"><defs><marker id="lb" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M2 1L8 5L2 9" fill="none" stroke="#0F6E56" stroke-width="1.5"/></marker></defs><line x1="0" y1="5" x2="30" y2="5" stroke="#0F6E56" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#lb)"/></svg>
+      <span>Response</span>
+    </div>
+    <div class="li">
+      <svg width="14" height="10"><rect x="1" y="1" width="12" height="8" rx="2" fill="none" stroke="#888" stroke-width="1" stroke-dasharray="2 2"/></svg>
+      <span>Xử lý nội bộ</span>
+    </div>
+    <div class="li">
+      <svg width="14" height="10"><rect x="1" y="1" width="12" height="8" rx="2" fill="#FFF3CD" stroke="#D97706" stroke-width="1"/></svg>
+      <span>Ghi chú / điều kiện</span>
+    </div>
+  </div>
+</div>
+
+<script>
+const A = [
+  { label:'Client (FE)', sub:'React + Vite', c:'#534AB7', bg:'#EEEDFE' },
+  { label:'Express BE',  sub:'Node.js',       c:'#0F6E56', bg:'#E1F5EE' },
+  { label:'MongoDB',     sub:'Mongoose',       c:'#854F0B', bg:'#FAEEDA' },
+  { label:'gTTS / Claude', sub:'AI services', c:'#993C1D', bg:'#FAECE7' },
+];
+
+const FLOWS = [
+{
+  title:'GPS & Audio', desc:'Người dùng click map → phát audio thuyết minh',
+  msgs:[
+    {f:0,t:0,label:'click map → GPS thay đổi',type:'self'},
+    {f:0,t:1,label:'GET /api/venues/nearby?lat&lng&radius=10000&lang=vi',type:'req'},
+    {f:1,t:2,label:'Poi.find({ status:"approved" })',type:'req'},
+    {f:2,t:1,label:'[venues array]',type:'res'},
+    {f:1,t:0,label:'[ {id, name, distance, withinAudioRadius, lat, lng} ]',type:'res'},
+    {f:0,t:0,label:'withinAudioRadius === true → unlockAudio()',type:'note'},
+    {f:0,t:1,label:'GET /api/audio/:venueId?lang=vi',type:'req'},
+    {f:1,t:2,label:'Poi.findOne({ id: venueId })',type:'req'},
+    {f:2,t:1,label:'poi + audioTranscripts',type:'res'},
+    {f:1,t:3,label:'new gTTS(transcript,"vi").stream()',type:'req'},
+    {f:3,t:1,label:'MP3 audio bytes stream',type:'res'},
+    {f:1,t:0,label:'Content-Type: audio/mpeg (stream)',type:'res'},
+    {f:0,t:0,label:'new Audio(url).play() → phát thuyết minh',type:'self'},
+    {f:0,t:0,label:'GPS rời khỏi audioRadius → stopAudio()',type:'note'},
+  ]
+},
+{
+  title:'Đăng nhập', desc:'Vendor / Admin đăng nhập lấy JWT',
+  msgs:[
+    {f:0,t:0,label:'nhập email + password, bấm Đăng nhập',type:'self'},
+    {f:0,t:1,label:'POST /api/auth/login  { email, password }',type:'req'},
+    {f:1,t:2,label:'User.findOne({ email })',type:'req'},
+    {f:2,t:1,label:'user document',type:'res'},
+    {f:1,t:1,label:'bcrypt.compare(password, hash)',type:'self'},
+    {f:1,t:1,label:'jwt.sign({ id, email, role }, secret)',type:'self'},
+    {f:1,t:0,label:'{ user, accessToken } + Set-Cookie: refreshToken (httpOnly)',type:'res'},
+    {f:0,t:0,label:'setAuth(user, token) → navigate /vendor/dashboard',type:'self'},
+  ]
+},
+{
+  title:'Đăng ký quán', desc:'Vendor đăng ký quán → AI dịch 15 ngôn ngữ',
+  msgs:[
+    {f:0,t:0,label:'điền form: tên, mô tả, tọa độ, danh mục',type:'self'},
+    {f:0,t:1,label:'POST /api/pois  { name, description, sourceLang, lat, lng, ... }  + Bearer token',type:'req'},
+    {f:1,t:1,label:'jwt.verify(token) → role === "vendor" OK',type:'self'},
+    {f:1,t:3,label:'Claude API: dịch tên + mô tả → 15 ngôn ngữ',type:'req'},
+    {f:3,t:1,label:'{ vi, en, zh, ja, ko, fr, de, es, it, pt, ru, ar, th, id, hi }',type:'res'},
+    {f:1,t:2,label:'Poi.create({ nameLocal, descriptionLocal, status:"pending" })',type:'req'},
+    {f:2,t:1,label:'poi document saved',type:'res'},
+    {f:1,t:0,label:'{ success:true, data: poi (status:"pending") }',type:'res'},
+    {f:0,t:0,label:'hiển thị "chờ Admin phê duyệt"',type:'self'},
+  ]
+},
+{
+  title:'Phê duyệt quán', desc:'Admin xem danh sách và phê duyệt quán',
+  msgs:[
+    {f:0,t:1,label:'GET /api/admin/pending  + Bearer token',type:'req'},
+    {f:1,t:1,label:'jwt.verify → requireRole("admin") OK',type:'self'},
+    {f:1,t:2,label:'Poi.find({ status:"pending" })',type:'req'},
+    {f:2,t:1,label:'[pending poi list]',type:'res'},
+    {f:1,t:0,label:'[ pending venues ]',type:'res'},
+    {f:0,t:0,label:'Admin xem thông tin, bấm "Duyệt"',type:'self'},
+    {f:0,t:1,label:'PATCH /api/pois/:id/approve  + Bearer token',type:'req'},
+    {f:1,t:2,label:'Poi.findOneAndUpdate({ status:"approved" })',type:'req'},
+    {f:2,t:1,label:'updated poi',type:'res'},
+    {f:1,t:0,label:'{ success:true, data: updatedPoi }',type:'res'},
+    {f:0,t:0,label:'invalidate cache → quán xuất hiện trên bản đồ',type:'self'},
+  ]
+},
+{
+  title:'Chat AI', desc:'Người dùng hỏi chatbot về quán ăn',
+  msgs:[
+    {f:0,t:0,label:'nhập câu hỏi hoặc bấm quick reply',type:'self'},
+    {f:0,t:1,label:'POST /api/chat  { message, lang, userLat, userLng }',type:'req'},
+    {f:1,t:1,label:'phân tích intent: nearest / vegetarian / open / budget',type:'self'},
+    {f:1,t:2,label:'Poi.find(filter).limit(3)',type:'req'},
+    {f:2,t:1,label:'matching venues',type:'res'},
+    {f:1,t:0,label:'{ reply, suggestedVenues, quickReplies }',type:'res'},
+    {f:0,t:0,label:'hiển thị reply + venue cards trong chat',type:'self'},
+  ]
+},
+];
+
+const W = 680;
+const BW = 130;
+const CX = [85, 255, 425, 595];
+const AY = 16;
+const AH = 52;
+const MY0 = AY + AH + 32;
+const MS = 54;
+const SELF_W = 28;
+const SELF_H = 22;
+
+function mkSVG(flowIdx) {
+  const fl = FLOWS[flowIdx];
+  const msgs = fl.msgs;
+  const H = MY0 + msgs.length * MS + 30;
+
+  const svg = document.getElementById('diagram');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('height', H);
+
+  const parts = [];
+
+  parts.push(`<defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="#185FA5" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="#0F6E56" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="as" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="#888" stroke-width="1.5"/>
+    </marker>
+  </defs>`);
+
+  // Actor boxes
+  A.forEach((a, i) => {
+    const x = CX[i] - BW/2;
+    parts.push(`<rect x="${x}" y="${AY}" width="${BW}" height="${AH}" rx="8"
+      fill="${a.bg}" stroke="${a.c}" stroke-width="1.5"/>`);
+    parts.push(`<text x="${CX[i]}" y="${AY+20}" text-anchor="middle"
+      font-family="inherit" font-size="12" font-weight="500" fill="${a.c}">${a.label}</text>`);
+    parts.push(`<text x="${CX[i]}" y="${AY+36}" text-anchor="middle"
+      font-family="inherit" font-size="10" fill="${a.c}" opacity=".65">${a.sub}</text>`);
+  });
+
+  // Lifelines
+  A.forEach((a, i) => {
+    parts.push(`<line x1="${CX[i]}" y1="${AY+AH}" x2="${CX[i]}" y2="${H-10}"
+      stroke="${a.c}" stroke-width="1" stroke-dasharray="5 4" opacity=".3"/>`);
+  });
+
+  // Messages
+  msgs.forEach((m, idx) => {
+    const cy = MY0 + idx * MS;
+
+    if (m.type === 'self') {
+      const cx = CX[m.f];
+      const lx = cx + SELF_W + 2;
+      parts.push(`<path d="M${cx} ${cy} L${cx+SELF_W} ${cy} L${cx+SELF_W} ${cy+SELF_H} L${cx} ${cy+SELF_H}"
+        fill="none" stroke="#888" stroke-width="1" stroke-dasharray="3 2" marker-end="url(#as)"/>`);
+      parts.push(`<text x="${lx+4}" y="${cy+SELF_H/2}"
+        dominant-baseline="middle" font-family="inherit" font-size="11" fill="#555">${m.label}</text>`);
+
+    } else if (m.type === 'note') {
+      const cx = CX[m.f];
+      const lx = cx + SELF_W + 2;
+      parts.push(`<rect x="${cx+2}" y="${cy-2}" width="12" height="14" rx="2"
+        fill="#FFF3CD" stroke="#D97706" stroke-width="1"/>`);
+      parts.push(`<text x="${lx+4}" y="${cy+SELF_H/2 - 4}"
+        dominant-baseline="middle" font-family="inherit" font-size="11" fill="#92400E">${m.label}</text>`);
+
+    } else {
+      const isReq = m.type === 'req';
+      const fc = CX[m.f];
+      const tc = CX[m.t];
+      const dir = fc < tc ? 1 : -1;
+      const x1 = fc + dir * 4;
+      const x2 = tc - dir * 4;
+      const mid = (x1 + x2) / 2;
+      const col = isReq ? '#185FA5' : '#0F6E56';
+      const dash = isReq ? '' : 'stroke-dasharray="6 3"';
+      const mk = isReq ? 'ar' : 'ag';
+
+      parts.push(`<line x1="${x1}" y1="${cy}" x2="${x2}" y2="${cy}"
+        stroke="${col}" stroke-width="1.5" ${dash} marker-end="url(#${mk})"/>`);
+      parts.push(`<text x="${mid}" y="${cy - 6}"
+        text-anchor="middle" font-family="inherit" font-size="11" fill="${col}" font-weight="500">${m.label}</text>`);
+    }
+  });
+
+  svg.innerHTML = parts.join('');
+}
+
+// Build tabs
+const tabsEl = document.getElementById('tabs');
+FLOWS.forEach((f, i) => {
+  const b = document.createElement('button');
+  b.className = 'tab' + (i === 0 ? ' active' : '');
+  b.textContent = f.title;
+  b.onclick = () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    b.classList.add('active');
+    mkSVG(i);
+  };
+  tabsEl.appendChild(b);
+});
+
+mkSVG(0);
+</script>
+</body>
+</html>

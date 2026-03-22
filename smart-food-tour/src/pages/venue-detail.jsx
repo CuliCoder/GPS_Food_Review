@@ -37,22 +37,15 @@ export default function VenueDetail() {
       return;
     }
 
-    if (!venue?.hasAudio) {
-      toast({ title: "Audio unavailable", description: "No audio guide for this venue." });
-      return;
-    }
-
     setIsPlaying(true);
     const audioUrl = getAudioUrl(venueId, language);
-    const audio = playAudioFromUrl(audioUrl, () => setIsPlaying(false));
-
-    // Handle lỗi stream
-    if (audio) {
-      audio.addEventListener("error", () => {
+    const audio = playAudioFromUrl(audioUrl, venueId, {
+      onEnd: () => setIsPlaying(false),
+      onError: () => {
         setIsPlaying(false);
-        toast({ title: "Audio error", description: "Could not load audio guide." });
-      });
-    }
+        toast({ title: "Audio unavailable", description: "No audio guide for this venue." });
+      },
+    });
   };
 
   const handleRespect = () => {

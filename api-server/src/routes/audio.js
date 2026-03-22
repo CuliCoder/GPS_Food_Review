@@ -12,8 +12,75 @@ const GTTS_LANG_MAP = {
 };
 
 /**
+ * Lấy text để đọc từ POI theo ngôn ngữ
+ * Hỗ trợ 3 format:
+ *  - audioTranscripts  (venues.js gốc từ Replit)
+ *  - descriptionLocal  (quán mới đăng ký qua form)
+ *  - translations      (GPS_Food_Review_pois.json)
+ */
+function getTextAndLang(poi, lang) {
+  // Flatten Map → object
+  const flatten = (v) =>
+    v instanceof Map ? Object.fromEntries(v) : (v || {});
+
+  const transcripts   = flatten(poi.audioTranscripts);
+  const descLocal     = flatten(poi.descriptionLocal);
+  const nameLocal     = flatten(poi.nameLocal);
+  const translations  = flatten(poi.translations);
+
+  // Ưu tiên: transcript → descriptionLocal → translations.description → description gốc
+  const getText = (l) =>
+    transcripts[l] ||
+    descLocal[l] ||
+    translations[l]?.description ||
+    null;
+
+  // Lấy tên theo ngôn ngữ
+  const getName = (l) =>
+    nameLocal[l] ||
+    translations[l]?.name ||
+    poi.name ||
+    "";
+
+  // Thử ngôn ngữ yêu cầu trước, fallback en, fallback bất kỳ
+  let text = getText(lang);
+  let resolvedLang = lang;
+
+  if (!text) {
+    text = getText("en");
+    resolvedLang = "en";
+  }
+
+  if (!text) {
+    // Thử bất kỳ ngôn ngữ nào có sẵn
+    const allLangs = [
+      ...Object.keys(transcripts),
+      ...Object.keys(descLocal),
+      ...Object.keys(translations),
+    ];
+    for (const l of allLangs) {
+      text = getText(l);
+      if (text) { resolvedLang = l; break; }
+    }
+  }
+
+  // Fallback cuối: description gốc + name
+  if (!text) {
+    text = poi.description || poi.name || "Welcome!";
+    resolvedLang = "en";
+  }
+
+  // Thêm tên quán vào đầu nếu chưa có
+  const name = getName(resolvedLang);
+  if (name && !text.startsWith(name)) {
+    text = `${name}. ${text}`;
+  }
+
+  return { text, resolvedLang };
+}
+
+/**
  * GET /api/audio/:venueId?lang=vi
- * Tạo audio từ transcript hoặc description trong translations
  */
 router.get("/:venueId", async (req, res) => {
   const { venueId } = req.params;
@@ -21,48 +88,16 @@ router.get("/:venueId", async (req, res) => {
 
   try {
     const poi = await Poi.findOne({ id: venueId }).lean();
+
     if (!poi) {
       res.status(404).json({ success: false, message: "Venue not found" });
       return;
     }
 
-    // 1. Ưu tiên audioTranscripts nếu có
-    const transcripts =
-      poi.audioTranscripts instanceof Map
-        ? Object.fromEntries(poi.audioTranscripts)
-        : (poi.audioTranscripts || {});
-
-    // 2. Fallback: dùng description từ translations (GPS_Food_Review format)
-    const translations =
-      poi.translations instanceof Map
-        ? Object.fromEntries(poi.translations)
-        : (poi.translations || {});
-
-    // Tìm text theo lang, fallback en, fallback bất kỳ
-    let text =
-      transcripts[lang] ||
-      transcripts["en"] ||
-      translations[lang]?.description ||
-      translations["en"]?.description ||
-      Object.values(translations)[0]?.description ||
-      poi.description ||
-      poi.name ||
-      "Welcome!";
-
-    // Tên quán ở đầu nếu chưa có
-    const nameInLang =
-      translations[lang]?.name ||
-      translations["en"]?.name ||
-      poi.name ||
-      "";
-
-    if (nameInLang && !text.includes(nameInLang)) {
-      text = `${nameInLang}. ${text}`;
-    }
-
-    const resolvedLang = transcripts[lang] ? lang :
-                         translations[lang] ? lang : "en";
+    const { text, resolvedLang } = getTextAndLang(poi, lang);
     const gttsLang = GTTS_LANG_MAP[resolvedLang] || "en";
+
+    console.log(`🔊 [${venueId}] lang=${lang}→${resolvedLang}, text="${text.slice(0, 60)}..."`);
 
     // Ghi thống kê
     const today = new Date().toISOString().split("T")[0];
@@ -70,6 +105,7 @@ router.get("/:venueId", async (req, res) => {
 
     res.setHeader("Content-Type", "audio/mpeg");
     res.setHeader("X-Lang", resolvedLang);
+    res.setHeader("X-Resolved-Lang", resolvedLang);
 
     const tts = new gTTS(text, gttsLang);
     tts.stream().pipe(res);
@@ -95,22 +131,14 @@ router.get("/:venueId/transcript", async (req, res) => {
     return;
   }
 
-  const transcripts =
-    poi.audioTranscripts instanceof Map
-      ? Object.fromEntries(poi.audioTranscripts)
-      : (poi.audioTranscripts || {});
+  const { text, resolvedLang } = getTextAndLang(poi, lang);
 
-  const translations =
-    poi.translations instanceof Map
-      ? Object.fromEntries(poi.translations)
-      : (poi.translations || {});
-
-  const resolvedLang = transcripts[lang] ? lang : "en";
-  const text =
-    transcripts[resolvedLang] ||
-    translations[lang]?.description ||
-    translations["en"]?.description ||
-    poi.description || "";
+  const flatten = (v) => v instanceof Map ? Object.fromEntries(v) : (v || {});
+  const allLangs = [
+    ...Object.keys(flatten(poi.audioTranscripts)),
+    ...Object.keys(flatten(poi.descriptionLocal)),
+    ...Object.keys(flatten(poi.translations)),
+  ];
 
   res.json({
     success: true,
@@ -118,7 +146,7 @@ router.get("/:venueId/transcript", async (req, res) => {
       venueId: poi.id,
       lang: resolvedLang,
       transcript: text,
-      availableLanguages: Object.keys({ ...transcripts, ...translations }),
+      availableLanguages: [...new Set(allLangs)],
     },
   });
 });

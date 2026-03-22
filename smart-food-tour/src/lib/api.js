@@ -247,6 +247,8 @@ export function useDeletePoi() {
       queryClient.invalidateQueries({ queryKey: ["vendor/venues"] });
       queryClient.invalidateQueries({ queryKey: ["admin/venues"] });
       queryClient.invalidateQueries({ queryKey: ["admin/pending"] });
+      queryClient.invalidateQueries({ queryKey: ["venues/nearby"] });
+      queryClient.invalidateQueries({ queryKey: ["venues"] });
     },
   });
 }
@@ -259,6 +261,9 @@ export function useApprovePoi() {
       queryClient.invalidateQueries({ queryKey: ["admin/pending"] });
       queryClient.invalidateQueries({ queryKey: ["admin/venues"] });
       queryClient.invalidateQueries({ queryKey: ["admin/stats"] });
+      // Invalidate map queries để quán mới xuất hiện ngay
+      queryClient.invalidateQueries({ queryKey: ["venues/nearby"] });
+      queryClient.invalidateQueries({ queryKey: ["venues"] });
     },
   });
 }
@@ -271,6 +276,7 @@ export function useRejectPoi() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin/pending"] });
       queryClient.invalidateQueries({ queryKey: ["admin/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["vendor/venues"] });
     },
   });
 }
