@@ -212,3 +212,71 @@ export function useAdminUpdateUserStatus() {
     },
   });
 }
+
+// ── POI Management ────────────────────────────────────────────
+
+export function useCreatePoi() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data) => apiFetch("/pois", { method: "POST", body: JSON.stringify(data) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["vendor/venues"] });
+      queryClient.invalidateQueries({ queryKey: ["admin/pending"] });
+    },
+  });
+}
+
+export function useUpdatePoi() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }) =>
+      apiFetch(`/pois/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["vendor/venues"] });
+      queryClient.invalidateQueries({ queryKey: ["admin/venues"] });
+    },
+  });
+}
+
+export function useDeletePoi() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, isAdmin }) =>
+      apiFetch(isAdmin ? `/pois/${id}` : `/pois/${id}/mine`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["vendor/venues"] });
+      queryClient.invalidateQueries({ queryKey: ["admin/venues"] });
+      queryClient.invalidateQueries({ queryKey: ["admin/pending"] });
+      queryClient.invalidateQueries({ queryKey: ["venues/nearby"] });
+      queryClient.invalidateQueries({ queryKey: ["venues"] });
+    },
+  });
+}
+
+export function useApprovePoi() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => apiFetch(`/pois/${id}/approve`, { method: "PATCH" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin/pending"] });
+      queryClient.invalidateQueries({ queryKey: ["admin/venues"] });
+      queryClient.invalidateQueries({ queryKey: ["admin/stats"] });
+      // Invalidate map queries để quán mới xuất hiện ngay
+      queryClient.invalidateQueries({ queryKey: ["venues/nearby"] });
+      queryClient.invalidateQueries({ queryKey: ["venues"] });
+    },
+  });
+}
+
+export function useRejectPoi() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }) =>
+      apiFetch(`/pois/${id}/reject`, { method: "PATCH", body: JSON.stringify({ reason }) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin/pending"] });
+      queryClient.invalidateQueries({ queryKey: ["admin/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["vendor/venues"] });
+    },
+  });
+}

@@ -102,9 +102,12 @@ const PoiSchema = new Schema(
   {
     timestamps: true,
     toJSON: {
-      virtuals: true,
+      virtuals: false,
       transform: (_doc, ret) => {
-        // Flatten Map -> plain object cho JSON
+        // Giữ nguyên id (slug field), chỉ xóa _id và __v
+        delete ret._id;
+        delete ret.__v;
+        // Flatten Map fields
         ["nameLocal", "descriptionLocal", "hours", "audioTranscripts"].forEach((k) => {
           if (ret[k] instanceof Map) ret[k] = Object.fromEntries(ret[k]);
         });
@@ -114,8 +117,6 @@ const PoiSchema = new Schema(
             nameLocal: m.nameLocal instanceof Map ? Object.fromEntries(m.nameLocal) : m.nameLocal,
           }));
         }
-        delete ret.__v;
-        delete ret.location; // ẩn GeoJSON field khỏi response
         return ret;
       },
     },
