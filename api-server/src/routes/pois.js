@@ -22,6 +22,42 @@ const LANGUAGES = [
   { code: "hi", name: "Hindi" },
 ];
 
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+
+async function translateByGooglePublic(text, sourceLang, targetLang) {
+  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(sourceLang)}&tl=${encodeURIComponent(targetLang)}&dt=t&q=${encodeURIComponent(text)}`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Google translate fallback failed: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const translated = Array.isArray(data?.[0])
+    ? data[0].map((part) => part?.[0] || "").join("")
+    : "";
+
+  if (!translated) {
+    throw new Error("Google translate fallback returned empty result");
+  }
+
+  return translated;
+}
+
+async function fallbackTranslateAllLanguages(text, sourceLang, targetLangs) {
+  const translations = { [sourceLang]: text };
+
+  for (const lang of targetLangs) {
+    try {
+      translations[lang.code] = await translateByGooglePublic(text, sourceLang, lang.code);
+    } catch {
+      // Nếu fallback cho 1 ngôn ngữ lỗi, giữ nguyên text gốc để không chặn luồng đăng ký.
+      translations[lang.code] = text;
+    }
+  }
+
+  return translations;
+}
+
 /**
  * Dịch text sang 15 ngôn ngữ bằng Claude API
  * @param {string} text - Văn bản gốc
@@ -29,6 +65,15 @@ const LANGUAGES = [
  * @returns {Record<string, string>} - Map { langCode: translatedText }
  */
 async function translateToAllLanguages(text, sourceLang = "vi") {
+  if (!text?.trim()) {
+    return { [sourceLang]: "" };
+  }
+
+  if (!ANTHROPIC_API_KEY) {
+    console.warn("ANTHROPIC_API_KEY is missing. Falling back to source language only.");
+    return fallbackTranslateAllLanguages(text, sourceLang, LANGUAGES.filter(l => l.code !== sourceLang));
+  }
+
   const sourceLangName = LANGUAGES.find(l => l.code === sourceLang)?.name || "Vietnamese";
   const targetLangs = LANGUAGES.filter(l => l.code !== sourceLang);
 
@@ -49,13 +94,22 @@ Return format:
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
         max_tokens: 2000,
         messages: [{ role: "user", content: prompt }],
       }),
     });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Anthropic API error ${response.status}: ${errorText}`);
+    }
 
     const data = await response.json();
     const raw = data.content?.[0]?.text || "{}";
@@ -69,9 +123,9 @@ Return format:
     return translations;
 
   } catch (err) {
-    console.error("Translation error:", err);
-    // Fallback: chỉ có ngôn ngữ gốc
-    return { [sourceLang]: text };
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`Anthropic translation failed (${message}). Using fallback translator.`);
+    return fallbackTranslateAllLanguages(text, sourceLang, targetLangs);
   }
 }
 
@@ -83,7 +137,11 @@ router.post("/pois", requireAuth, requireRole("vendor", "admin"), async (req, re
     sourceLang = "vi", // ngôn ngữ vendor đang nhập
   } = req.body;
 
-  if (!name || !category || !lat || !lng || !address) {
+  const parsedLat = Number.parseFloat(lat);
+  const parsedLng = Number.parseFloat(lng);
+  const hasValidCoordinates = Number.isFinite(parsedLat) && Number.isFinite(parsedLng);
+
+  if (!name || !category || !address || !hasValidCoordinates) {
     res.status(400).json({ success: false, message: "name, category, lat, lng, address are required" });
     return;
   }
@@ -105,9 +163,9 @@ router.post("/pois", requireAuth, requireRole("vendor", "admin"), async (req, re
     category,
     description: descTranslations["en"] || descTranslations[sourceLang] || description || "",
     descriptionLocal: descTranslations,
-    lat: parseFloat(lat),
-    lng: parseFloat(lng),
-    location: { type: "Point", coordinates: [parseFloat(lng), parseFloat(lat)] },
+    lat: parsedLat,
+    lng: parsedLng,
+    location: { type: "Point", coordinates: [parsedLng, parsedLat] },
     address,
     priceRange: priceRange || "$",
     tags: tags || [],
