@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useLocation, Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
+import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from "react-leaflet";
+import L from "leaflet";
 import {
   LayoutDashboard, Store, Mic, BarChart2, MessageSquare,
   Settings, LogOut, Volume2, Users, TrendingUp, Bell, Menu,
@@ -47,6 +49,69 @@ const STATUS_CONFIG = {
   rejected: { label: "Từ chối",    color: "bg-red-100 text-red-700",       icon: XCircle },
 };
 
+const DEFAULT_POSITION = [10.7769, 106.7009];
+
+const vendorLocationIcon = L.divIcon({
+  className: "custom-vendor-location-marker",
+  html: `<div style="width:14px;height:14px;background:#f97316;border:2px solid #fff;border-radius:50%;box-shadow:0 4px 10px rgba(0,0,0,0.25);"></div>`,
+  iconSize: [14, 14],
+  iconAnchor: [7, 7],
+});
+
+const userLocationIcon = L.divIcon({
+  className: "custom-vendor-user-marker",
+  html: `<div style="width:14px;height:14px;background:#2563eb;border:2px solid #fff;border-radius:50%;box-shadow:0 4px 10px rgba(0,0,0,0.25);"></div>`,
+  iconSize: [14, 14],
+  iconAnchor: [7, 7],
+});
+
+function RegisterLocationPicker({ selectedPosition, userPosition, centerPosition, onPick }) {
+  function MapClickHandler() {
+    useMapEvents({
+      click(e) {
+        onPick(e.latlng.lat, e.latlng.lng);
+      },
+    });
+    return null;
+  }
+
+  function MapCenterSync({ center }) {
+    const map = useMap();
+
+    useEffect(() => {
+      if (center) {
+        map.setView(center);
+      }
+    }, [center, map]);
+
+    return null;
+  }
+
+  return (
+    <MapContainer
+      center={centerPosition || DEFAULT_POSITION}
+      zoom={16}
+      scrollWheelZoom={true}
+      className="w-full h-64 rounded-xl border border-gray-200 overflow-hidden"
+    >
+      <TileLayer
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+      />
+      <MapClickHandler />
+      <MapCenterSync center={centerPosition} />
+
+      {userPosition && (
+        <Marker position={userPosition} icon={userLocationIcon} />
+      )}
+
+      {selectedPosition && (
+        <Marker position={selectedPosition} icon={vendorLocationIcon} />
+      )}
+    </MapContainer>
+  );
+}
+
 export default function VendorDashboard() {
   const [, navigate] = useLocation();
   const { user, clearAuth } = useAppStore();
@@ -59,6 +124,10 @@ export default function VendorDashboard() {
   });
   const [formError, setFormError] = useState("");
   const [formSuccess, setFormSuccess] = useState("");
+  const [userPosition, setUserPosition] = useState(null);
+  const [mapCenter, setMapCenter] = useState(DEFAULT_POSITION);
+  const [isLocating, setIsLocating] = useState(false);
+  const [isResolvingAddress, setIsResolvingAddress] = useState(false);
 
   useEffect(() => {
     const stored = user || JSON.parse(localStorage.getItem("sft_user") || "null");
@@ -76,6 +145,77 @@ export default function VendorDashboard() {
 
   const handleField = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  const resolveAddressFromCoordinates = async (lat, lng) => {
+    setIsResolvingAddress(true);
+    try {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}`;
+      const response = await fetch(url, {
+        headers: {
+          Accept: "application/json",
+        },
+      });
+
+      if (!response.ok) return;
+
+      const data = await response.json();
+      if (data?.display_name) {
+        handleField("address", data.display_name);
+      }
+    } catch {
+      // Không chặn luồng nếu reverse geocode thất bại.
+    } finally {
+      setIsResolvingAddress(false);
+    }
+  };
+
+  const handlePickOnMap = async (lat, lng) => {
+    const nextLat = Number(lat).toFixed(6);
+    const nextLng = Number(lng).toFixed(6);
+
+    handleField("lat", nextLat);
+    handleField("lng", nextLng);
+    setMapCenter([Number(nextLat), Number(nextLng)]);
+
+    await resolveAddressFromCoordinates(nextLat, nextLng);
+  };
+
+  const useMyCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setFormError("Trình duyệt không hỗ trợ định vị GPS.");
+      return;
+    }
+
+    setFormError("");
+    setIsLocating(true);
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const nextLat = Number(position.coords.latitude).toFixed(6);
+        const nextLng = Number(position.coords.longitude).toFixed(6);
+        const coords = [Number(nextLat), Number(nextLng)];
+
+        setUserPosition(coords);
+        setMapCenter(coords);
+        handleField("lat", nextLat);
+        handleField("lng", nextLng);
+
+        await resolveAddressFromCoordinates(nextLat, nextLng);
+        setIsLocating(false);
+      },
+      () => {
+        setIsLocating(false);
+        setFormError("Không lấy được vị trí hiện tại. Bạn có thể click chọn trực tiếp trên bản đồ.");
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  useEffect(() => {
+    if (tab !== "register") return;
+    if (form.lat && form.lng) return;
+    useMyCurrentLocation();
+  }, [tab]);
+
   const handleRegister = async () => {
     setFormError(""); setFormSuccess("");
     if (!form.name || !form.address || !form.lat || !form.lng) {
@@ -85,7 +225,9 @@ export default function VendorDashboard() {
     createPoi.mutate(form, {
       onSuccess: () => {
         setFormSuccess("Đăng ký thành công! Quán đang chờ Admin phê duyệt.");
-        setForm({ name: "", category: "vietnamese", address: "", lat: "", lng: "", priceRange: "$", phone: "", description: "" });
+        setForm({ name: "", category: "vietnamese", address: "", lat: "", lng: "", priceRange: "$", phone: "", description: "", sourceLang: "vi" });
+        setUserPosition(null);
+        setMapCenter(DEFAULT_POSITION);
         setTab("venues");
         refetchVenues();
       },
@@ -297,8 +439,6 @@ export default function VendorDashboard() {
               {[
                 { label: "Tên quán *", key: "name", placeholder: "Phở Ngon Số 1" },
                 { label: "Địa chỉ *",  key: "address", placeholder: "26 Lê Lợi, Quận 1, TP.HCM" },
-                { label: "Vĩ độ (lat) *", key: "lat", placeholder: "10.7769", type: "number" },
-                { label: "Kinh độ (lng) *", key: "lng", placeholder: "106.7009", type: "number" },
                 { label: "Số điện thoại", key: "phone", placeholder: "028 3821 1234" },
               ].map(({ label, key, placeholder, type }) => (
                 <div key={key} className="space-y-1">
@@ -308,6 +448,55 @@ export default function VendorDashboard() {
                     className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-300 text-sm" />
                 </div>
               ))}
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium text-gray-700">Chọn vị trí quán trên bản đồ *</label>
+                  <button
+                    type="button"
+                    onClick={useMyCurrentLocation}
+                    disabled={isLocating}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-orange-200 text-orange-600 hover:bg-orange-50 disabled:opacity-60"
+                  >
+                    {isLocating ? "Đang lấy vị trí..." : "Dùng vị trí hiện tại"}
+                  </button>
+                </div>
+
+                <RegisterLocationPicker
+                  selectedPosition={form.lat && form.lng ? [Number(form.lat), Number(form.lng)] : null}
+                  userPosition={userPosition}
+                  centerPosition={mapCenter}
+                  onPick={handlePickOnMap}
+                />
+
+                <p className="text-xs text-gray-500">
+                  Click vào bản đồ để chọn chính xác địa điểm quán.
+                  {isResolvingAddress ? " Đang cập nhật địa chỉ..." : ""}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-gray-700">Vĩ độ (lat) *</label>
+                  <input
+                    type="text"
+                    value={form.lat}
+                    readOnly
+                    placeholder="Sẽ tự động điền"
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl bg-gray-50 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-gray-700">Kinh độ (lng) *</label>
+                  <input
+                    type="text"
+                    value={form.lng}
+                    readOnly
+                    placeholder="Sẽ tự động điền"
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl bg-gray-50 text-sm"
+                  />
+                </div>
+              </div>
 
               <div className="space-y-1">
                 <label className="text-sm font-medium text-gray-700">Mô tả quán (AI sẽ dịch tự động)</label>
@@ -352,7 +541,7 @@ export default function VendorDashboard() {
               </button>
 
               <p className="text-xs text-gray-400 text-center">
-                💡 Tọa độ lat/lng: dùng Google Maps → chuột phải → "What's here?"
+                💡 Mẹo: nếu trình duyệt chặn định vị, bạn vẫn có thể click bản đồ để chọn vị trí quán.
               </p>
             </div>
           )}
