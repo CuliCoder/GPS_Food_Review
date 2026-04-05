@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { Poi } from "../models/poi.model.js";
+import { Payment } from "../models/payment.model.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
 const router = Router();
@@ -134,8 +135,37 @@ router.post("/pois", requireAuth, requireRole("vendor", "admin"), async (req, re
   const {
     name, category, description, lat, lng, address,
     priceRange, tags, phone, website, hours,
+    paymentId,
     sourceLang = "vi", // ngôn ngữ vendor đang nhập
   } = req.body;
+
+  let payment = null;
+  if (req.user.role === "vendor") {
+    if (!paymentId) {
+      res.status(402).json({
+        success: false,
+        message: "Payment is required for each new venue registration",
+      });
+      return;
+    }
+
+    payment = await Payment.findOne({
+      _id: paymentId,
+      userId: req.user.id,
+      status: "success",
+      paymentCode: "poi_registration",
+      poiId: { $exists: false },
+      usedForPoiAt: { $exists: false },
+    });
+
+    if (!payment) {
+      res.status(402).json({
+        success: false,
+        message: "Invalid or already used payment for venue registration",
+      });
+      return;
+    }
+  }
 
   const parsedLat = Number.parseFloat(lat);
   const parsedLng = Number.parseFloat(lng);
@@ -180,6 +210,13 @@ router.post("/pois", requireAuth, requireRole("vendor", "admin"), async (req, re
     audioRadius: 50,
     hasAudio: false,
   });
+
+  if (payment) {
+    payment.poiId = poi.id;
+    payment.usedForPoiAt = new Date();
+    payment.message = `Paid registration for venue ${poi.id}`;
+    await payment.save();
+  }
 
   res.status(201).json({ success: true, data: poi });
 });

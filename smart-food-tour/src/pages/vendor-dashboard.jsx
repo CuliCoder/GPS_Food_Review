@@ -13,9 +13,12 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import {
-  useVendorStats, useVendorVenues, useCreatePoi, useDeletePoi,
+  useVendorStats, useVendorVenues, useCreatePoi, useDeletePoi, useCreatePayment,
 } from "@/lib/api";
 import { useAppStore } from "@/store/use-app-store";
+
+const VENUE_REGISTRATION_FEE = 10000;
+const PENDING_POI_DRAFT_KEY = "sft_pending_poi_draft";
 
 const NAV_ITEMS = [
   { id: "overview",  label: "Tổng quan",     icon: LayoutDashboard },
@@ -128,6 +131,7 @@ export default function VendorDashboard() {
   const [mapCenter, setMapCenter] = useState(DEFAULT_POSITION);
   const [isLocating, setIsLocating] = useState(false);
   const [isResolvingAddress, setIsResolvingAddress] = useState(false);
+  const [isProcessingPaidRegistration, setIsProcessingPaidRegistration] = useState(false);
 
   useEffect(() => {
     const stored = user || JSON.parse(localStorage.getItem("sft_user") || "null");
@@ -137,6 +141,7 @@ export default function VendorDashboard() {
   const { data: stats }  = useVendorStats();
   const { data: venues, refetch: refetchVenues } = useVendorVenues();
   const createPoi  = useCreatePoi();
+  const createPayment = useCreatePayment();
   const deletePoi  = useDeletePoi();
 
   const handleLogout = () => { clearAuth(); navigate("/login"); };
@@ -216,23 +221,86 @@ export default function VendorDashboard() {
     useMyCurrentLocation();
   }, [tab]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paymentStatus = params.get("payment");
+    const purpose = params.get("purpose");
+    const paymentId = params.get("paymentId");
+
+    if (paymentStatus !== "success" || purpose !== "poi_registration" || !paymentId) return;
+
+    const rawDraft = localStorage.getItem(PENDING_POI_DRAFT_KEY);
+    if (!rawDraft) {
+      setFormError("Thanh toán thành công nhưng không tìm thấy dữ liệu quán tạm lưu. Vui lòng nhập lại để đăng ký.");
+      return;
+    }
+
+    if (isProcessingPaidRegistration) return;
+
+    let draft = null;
+    try {
+      draft = JSON.parse(rawDraft);
+    } catch {
+      localStorage.removeItem(PENDING_POI_DRAFT_KEY);
+      setFormError("Dữ liệu quán tạm lưu không hợp lệ. Vui lòng nhập lại.");
+      return;
+    }
+
+    setIsProcessingPaidRegistration(true);
+    setFormError("");
+
+    createPoi.mutate(
+      { ...draft, paymentId },
+      {
+        onSuccess: () => {
+          localStorage.removeItem(PENDING_POI_DRAFT_KEY);
+          setFormSuccess("Thanh toán thành công và quán đã được tạo, đang chờ Admin duyệt.");
+          setTab("venues");
+          refetchVenues();
+          window.history.replaceState({}, "", "/vendor/dashboard");
+        },
+        onError: (e) => {
+          setFormError(e.message || "Không thể tạo quán sau thanh toán. Vui lòng thử lại.");
+        },
+        onSettled: () => {
+          setIsProcessingPaidRegistration(false);
+        },
+      }
+    );
+  }, [createPoi, isProcessingPaidRegistration, refetchVenues]);
+
   const handleRegister = async () => {
     setFormError(""); setFormSuccess("");
     if (!form.name || !form.address || !form.lat || !form.lng) {
       setFormError("Vui lòng điền đầy đủ tên, địa chỉ, lat, lng");
       return;
     }
-    createPoi.mutate(form, {
-      onSuccess: () => {
-        setFormSuccess("Đăng ký thành công! Quán đang chờ Admin phê duyệt.");
-        setForm({ name: "", category: "vietnamese", address: "", lat: "", lng: "", priceRange: "$", phone: "", description: "", sourceLang: "vi" });
-        setUserPosition(null);
-        setMapCenter(DEFAULT_POSITION);
-        setTab("venues");
-        refetchVenues();
+
+    const orderId = `POI-${currentUser?._id || "vendor"}-${Date.now()}`;
+    const description = `Phi dang ky quan ${form.name}`;
+    localStorage.setItem(PENDING_POI_DRAFT_KEY, JSON.stringify(form));
+
+    createPayment.mutate(
+      {
+        amount: VENUE_REGISTRATION_FEE,
+        orderId,
+        description,
+        purpose: "poi_registration",
       },
-      onError: (e) => setFormError(e.message),
-    });
+      {
+        onSuccess: ({ paymentUrl }) => {
+          if (!paymentUrl) {
+            setFormError("Không tạo được link thanh toán VNPay.");
+            return;
+          }
+          window.location.href = paymentUrl;
+        },
+        onError: (e) => {
+          setFormError(e.message || "Không tạo được giao dịch thanh toán.");
+          localStorage.removeItem(PENDING_POI_DRAFT_KEY);
+        },
+      }
+    );
   };
 
   const handleDelete = (id) => {
@@ -409,7 +477,7 @@ export default function VendorDashboard() {
           {/* ── REGISTER ── */}
           {tab === "register" && (
             <div className="max-w-lg space-y-4">
-              <p className="text-sm text-gray-500">Quán sẽ ở trạng thái chờ duyệt sau khi đăng ký.</p>
+              <p className="text-sm text-gray-500">Mỗi lần đăng ký quán mới cần thanh toán {VENUE_REGISTRATION_FEE.toLocaleString("vi-VN")} ₫ qua VNPay. Sau thanh toán hệ thống sẽ tự tạo quán ở trạng thái chờ duyệt.</p>
 
               {formError && <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-sm">{formError}</div>}
               {formSuccess && <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-green-700 text-sm">{formSuccess}</div>}
@@ -528,15 +596,15 @@ export default function VendorDashboard() {
                 </div>
               </div>
 
-              <button onClick={handleRegister} disabled={createPoi.isPending}
+              <button onClick={handleRegister} disabled={createPayment.isPending || isProcessingPaidRegistration}
                 className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
-                {createPoi.isPending ? (
+                {createPayment.isPending || isProcessingPaidRegistration ? (
                   <>
                     <span className="animate-spin border-2 border-white border-t-transparent rounded-full w-4 h-4" />
-                    🌐 Đang dịch sang 15 ngôn ngữ...
+                    Đang chuyển sang thanh toán...
                   </>
                 ) : (
-                  <><Plus size={16} /> Đăng ký quán</>
+                  <><Plus size={16} /> Thanh toán & Đăng ký quán</>
                 )}
               </button>
 

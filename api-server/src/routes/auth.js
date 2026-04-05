@@ -85,14 +85,34 @@ router.post("/auth/register/vendor", async (req, res) => {
     return;
   }
 
-  // Vendor mặc định trạng thái "pending", chờ Admin duyệt
+  // Vendor mặc định trạng thái "pending", chưa thanh toán
   const user = await User.create({
     email, password, name, phone, shopName,
     role: "vendor",
     status: "pending",
   });
 
-  res.status(201).json({ success: true, data: { user, message: "Account pending approval" } });
+  const { accessToken, refreshToken } = signTokens({
+    id: user._id,
+    email: user.email,
+    role: user.role,
+  });
+
+  res.cookie("refreshToken", refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    sameSite: "lax",
+  });
+
+  res.status(201).json({ 
+    success: true,
+    data: { 
+      user, 
+      accessToken,
+      message: "Account created. You can start adding venues."
+    } 
+  });
 });
 
 // ── Refresh token ──────────────────────────────────────────────

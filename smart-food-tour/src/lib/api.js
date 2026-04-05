@@ -280,3 +280,23 @@ export function useRejectPoi() {
     },
   });
 }
+
+// ── Payment (VNPay) ───────────────────────────────────────────
+
+export async function apiCreatePayment(amount, orderId, description, purpose = "poi_registration") {
+  return apiFetch("/payment/create-order", {
+    method: "POST",
+    body: JSON.stringify({ amount, orderId, description, purpose }),
+  });
+}
+
+export async function apiQueryPaymentStatus(paymentId) {
+  return apiFetch(`/payment/status/${paymentId}`);
+}
+
+export function useCreatePayment() {
+  return useMutation({
+    mutationFn: ({ amount, orderId, description, purpose }) =>
+      apiCreatePayment(amount, orderId, description, purpose),
+  });
+}
