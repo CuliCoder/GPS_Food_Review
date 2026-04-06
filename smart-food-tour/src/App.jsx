@@ -8,6 +8,9 @@ import VenueDetail from "@/pages/venue-detail";
 import AuthPage from "@/pages/auth-page";
 import VendorDashboard from "@/pages/vendor-dashboard";
 import AdminDashboard from "@/pages/admin-dashboard";
+import PaymentPage from "@/pages/payment-page";
+import PaymentSuccess from "@/pages/payment-success";
+import PaymentFailed from "@/pages/payment-failed";
 import NotFound from "@/pages/not-found";
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -23,6 +26,9 @@ function Router() {
       <Route path="/map" component={MapPage}/>
       <Route path="/venue/:id" component={VenueDetail}/>
       <Route path="/login" component={AuthPage}/>
+      <Route path="/payment" component={PaymentPage}/>
+      <Route path="/payment-success" component={PaymentSuccess}/>
+      <Route path="/payment-failed" component={PaymentFailed}/>
       <Route path="/vendor/dashboard" component={VendorDashboard}/>
       <Route path="/admin/dashboard" component={AdminDashboard}/>
       <Route component={NotFound}/>

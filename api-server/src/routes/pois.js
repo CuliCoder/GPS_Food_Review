@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { Poi } from "../models/poi.model.js";
+import { Payment } from "../models/payment.model.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
 const router = Router();
@@ -23,6 +24,15 @@ const LANGUAGES = [
 ];
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+
+function buildVenueLandingUrl(venueId) {
+  const backendBase = (process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, "");
+  return `${backendBase}/api/venues/${encodeURIComponent(venueId)}/qr-landing`;
+}
+
+function buildVenueLandingQrImageUrl(landingUrl) {
+  return `https://api.qrserver.com/v1/create-qr-code/?size=512x512&data=${encodeURIComponent(landingUrl)}`;
+}
 
 async function translateByGooglePublic(text, sourceLang, targetLang) {
   const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(sourceLang)}&tl=${encodeURIComponent(targetLang)}&dt=t&q=${encodeURIComponent(text)}`;
@@ -134,8 +144,42 @@ router.post("/pois", requireAuth, requireRole("vendor", "admin"), async (req, re
   const {
     name, category, description, lat, lng, address,
     priceRange, tags, phone, website, hours,
+    paymentId,
     sourceLang = "vi", // ngôn ngữ vendor đang nhập
   } = req.body;
+
+  let payment = null;
+  if (req.user.role === "vendor") {
+    if (!paymentId) {
+      res.status(402).json({
+        success: false,
+        message: "Payment is required for each new venue registration",
+      });
+      return;
+    }
+
+    payment = await Payment.findOneAndUpdate({
+      _id: paymentId,
+      userId: req.user.id,
+      status: "success",
+      paymentCode: "poi_registration",
+      poiId: { $exists: false },
+      usedForPoiAt: { $exists: false },
+      registrationClaimedAt: { $exists: false },
+    }, {
+      $set: { registrationClaimedAt: new Date() },
+    }, {
+      new: true,
+    });
+
+    if (!payment) {
+      res.status(402).json({
+        success: false,
+        message: "Invalid or already used payment for venue registration",
+      });
+      return;
+    }
+  }
 
   const parsedLat = Number.parseFloat(lat);
   const parsedLng = Number.parseFloat(lng);
@@ -155,33 +199,60 @@ router.post("/pois", requireAuth, requireRole("vendor", "admin"), async (req, re
   console.log("✅ Translation done");
 
   const id = `poi-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const landingUrl = buildVenueLandingUrl(id);
+  const landingQrImageUrl = buildVenueLandingQrImageUrl(landingUrl);
 
-  const poi = await Poi.create({
-    id,
-    name: nameTranslations["en"] || nameTranslations[sourceLang] || name,
-    nameLocal: nameTranslations,
-    category,
-    description: descTranslations["en"] || descTranslations[sourceLang] || description || "",
-    descriptionLocal: descTranslations,
-    lat: parsedLat,
-    lng: parsedLng,
-    location: { type: "Point", coordinates: [parsedLng, parsedLat] },
-    address,
-    priceRange: priceRange || "$",
-    tags: tags || [],
-    phone: phone || "",
-    website: website || "",
-    hours: hours || {},
-    vendorId: req.user.id,
-    status: "pending",
-    rating: 0,
-    reviewCount: 0,
-    isOpen: true,
-    audioRadius: 50,
-    hasAudio: false,
-  });
+  try {
+    const poi = await Poi.create({
+      id,
+      name: nameTranslations["en"] || nameTranslations[sourceLang] || name,
+      nameLocal: nameTranslations,
+      category,
+      description: descTranslations["en"] || descTranslations[sourceLang] || description || "",
+      descriptionLocal: descTranslations,
+      lat: parsedLat,
+      lng: parsedLng,
+      location: { type: "Point", coordinates: [parsedLng, parsedLat] },
+      address,
+      priceRange: priceRange || "$",
+      tags: tags || [],
+      phone: phone || "",
+      website: website || "",
+      hours: hours || {},
+      vendorId: req.user.id,
+      status: "pending",
+      rating: 0,
+      reviewCount: 0,
+      isOpen: true,
+      audioRadius: 50,
+      hasAudio: false,
+      landingUrl,
+      landingQrImageUrl,
+    });
 
-  res.status(201).json({ success: true, data: poi });
+    if (payment) {
+      payment.poiId = poi.id;
+      payment.usedForPoiAt = new Date();
+      payment.message = `Paid registration for venue ${poi.id}`;
+      payment.registrationClaimedAt = undefined;
+      await payment.save();
+    }
+
+    res.status(201).json({ success: true, data: poi });
+  } catch (error) {
+    if (payment) {
+      await Payment.updateOne(
+        { _id: payment._id, registrationClaimedAt: { $exists: true } },
+        { $unset: { registrationClaimedAt: "" } }
+      );
+    }
+    console.error("POI creation after payment failed:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to create venue after payment",
+      error: error.message,
+    });
+  }
 });
 
 // ── Vendor: danh sách quán của mình ───────────────────────────

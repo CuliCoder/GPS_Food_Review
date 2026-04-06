@@ -6,16 +6,20 @@ import L from "leaflet";
 import {
   LayoutDashboard, Store, Mic, BarChart2, MessageSquare,
   Settings, LogOut, Volume2, Users, TrendingUp, Bell, Menu,
-  Plus, Trash2, Edit2, CheckCircle, Clock, XCircle,
+  Plus, Trash2, Edit2, CheckCircle, Clock, XCircle, Copy, Download, Printer,
 } from "lucide-react";
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import {
-  useVendorStats, useVendorVenues, useCreatePoi, useDeletePoi,
+  useVendorStats, useVendorVenues, useCreatePoi, useDeletePoi, useCreatePayment,
 } from "@/lib/api";
 import { useAppStore } from "@/store/use-app-store";
+
+const VENUE_REGISTRATION_FEE = 10000;
+const PENDING_POI_DRAFT_KEY = "sft_pending_poi_draft";
+const PENDING_PAYMENT_MARKER_PREFIX = "sft_processed_payment_";
 
 const NAV_ITEMS = [
   { id: "overview",  label: "Tổng quan",     icon: LayoutDashboard },
@@ -128,20 +132,22 @@ export default function VendorDashboard() {
   const [mapCenter, setMapCenter] = useState(DEFAULT_POSITION);
   const [isLocating, setIsLocating] = useState(false);
   const [isResolvingAddress, setIsResolvingAddress] = useState(false);
+  const [isProcessingPaidRegistration, setIsProcessingPaidRegistration] = useState(false);
+  const currentUser = user || JSON.parse(localStorage.getItem("sft_user") || "null");
 
   useEffect(() => {
-    const stored = user || JSON.parse(localStorage.getItem("sft_user") || "null");
-    if (!stored || stored.role !== "vendor") navigate("/login");
-  }, []);
+    if (!currentUser || currentUser.role !== "vendor") {
+      navigate("/login");
+    }
+  }, [currentUser, navigate]);
 
   const { data: stats }  = useVendorStats();
   const { data: venues, refetch: refetchVenues } = useVendorVenues();
   const createPoi  = useCreatePoi();
+  const createPayment = useCreatePayment();
   const deletePoi  = useDeletePoi();
 
   const handleLogout = () => { clearAuth(); navigate("/login"); };
-
-  const currentUser = user || JSON.parse(localStorage.getItem("sft_user") || "null");
 
   const handleField = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -216,28 +222,164 @@ export default function VendorDashboard() {
     useMyCurrentLocation();
   }, [tab]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paymentStatus = params.get("payment");
+    const purpose = params.get("purpose");
+    const paymentId = params.get("paymentId");
+
+    if (paymentStatus !== "success" || purpose !== "poi_registration" || !paymentId) return;
+
+    const processedPaymentKey = `${PENDING_PAYMENT_MARKER_PREFIX}${paymentId}`;
+    if (localStorage.getItem(processedPaymentKey)) {
+      window.history.replaceState({}, "", "/vendor/dashboard");
+      return;
+    }
+
+    const rawDraft = localStorage.getItem(PENDING_POI_DRAFT_KEY);
+    if (!rawDraft) {
+      setFormError("Thanh toán thành công nhưng không tìm thấy dữ liệu quán tạm lưu. Vui lòng nhập lại để đăng ký.");
+      return;
+    }
+
+    if (isProcessingPaidRegistration) return;
+
+    let draft = null;
+    try {
+      draft = JSON.parse(rawDraft);
+    } catch {
+      localStorage.removeItem(PENDING_POI_DRAFT_KEY);
+      setFormError("Dữ liệu quán tạm lưu không hợp lệ. Vui lòng nhập lại.");
+      return;
+    }
+
+    setIsProcessingPaidRegistration(true);
+    setFormError("");
+    localStorage.setItem(processedPaymentKey, "1");
+
+    createPoi.mutate(
+      { ...draft, paymentId },
+      {
+        onSuccess: () => {
+          localStorage.removeItem(PENDING_POI_DRAFT_KEY);
+          setFormSuccess("Thanh toán thành công và quán đã được tạo, đang chờ Admin duyệt.");
+          setTab("venues");
+          refetchVenues();
+          window.history.replaceState({}, "", "/vendor/dashboard");
+        },
+        onError: (e) => {
+          localStorage.removeItem(processedPaymentKey);
+          setFormError(e.message || "Không thể tạo quán sau thanh toán. Vui lòng thử lại.");
+        },
+        onSettled: () => {
+          setIsProcessingPaidRegistration(false);
+        },
+      }
+    );
+  }, [createPoi, isProcessingPaidRegistration, refetchVenues]);
+
   const handleRegister = async () => {
     setFormError(""); setFormSuccess("");
     if (!form.name || !form.address || !form.lat || !form.lng) {
       setFormError("Vui lòng điền đầy đủ tên, địa chỉ, lat, lng");
       return;
     }
-    createPoi.mutate(form, {
-      onSuccess: () => {
-        setFormSuccess("Đăng ký thành công! Quán đang chờ Admin phê duyệt.");
-        setForm({ name: "", category: "vietnamese", address: "", lat: "", lng: "", priceRange: "$", phone: "", description: "", sourceLang: "vi" });
-        setUserPosition(null);
-        setMapCenter(DEFAULT_POSITION);
-        setTab("venues");
-        refetchVenues();
+
+    const orderId = `POI-${currentUser?._id || "vendor"}-${Date.now()}`;
+    const description = `Phi dang ky quan ${form.name}`;
+    localStorage.setItem(PENDING_POI_DRAFT_KEY, JSON.stringify(form));
+
+    createPayment.mutate(
+      {
+        amount: VENUE_REGISTRATION_FEE,
+        orderId,
+        description,
+        purpose: "poi_registration",
       },
-      onError: (e) => setFormError(e.message),
-    });
+      {
+        onSuccess: ({ paymentUrl }) => {
+          if (!paymentUrl) {
+            setFormError("Không tạo được link thanh toán VNPay.");
+            return;
+          }
+          window.location.href = paymentUrl;
+        },
+        onError: (e) => {
+          setFormError(e.message || "Không tạo được giao dịch thanh toán.");
+          localStorage.removeItem(PENDING_POI_DRAFT_KEY);
+        },
+      }
+    );
   };
 
   const handleDelete = (id) => {
     if (!confirm("Xóa quán này?")) return;
     deletePoi.mutate({ id, isAdmin: false }, { onSuccess: () => refetchVenues() });
+  };
+
+  const getVenueLandingUrl = (venue) =>
+    venue?.landingUrl || `${window.location.origin}/venue/${encodeURIComponent(venue.id)}`;
+
+  const getVenueLandingQrUrl = (venue) => {
+    if (venue?.landingQrImageUrl) return venue.landingQrImageUrl;
+    const landingUrl = getVenueLandingUrl(venue);
+    return `https://api.qrserver.com/v1/create-qr-code/?size=512x512&data=${encodeURIComponent(landingUrl)}`;
+  };
+
+  const handleCopyVenueLink = async (venue) => {
+    const link = getVenueLandingUrl(venue);
+    try {
+      await navigator.clipboard.writeText(link);
+      alert("Đã copy link trang quán.");
+    } catch {
+      alert("Không copy được link. Vui lòng thử lại.");
+    }
+  };
+
+  const handleDownloadVenueQr = (venue) => {
+    const qrUrl = getVenueLandingQrUrl(venue);
+    const anchor = document.createElement("a");
+    anchor.href = qrUrl;
+    anchor.download = `venue-qr-${venue.id}.png`;
+    anchor.rel = "noopener noreferrer";
+    anchor.target = "_blank";
+    anchor.click();
+  };
+
+  const handlePrintVenueQr = (venue) => {
+    const qrUrl = getVenueLandingQrUrl(venue);
+    const landingUrl = getVenueLandingUrl(venue);
+    const printWindow = window.open("", "_blank", "width=700,height=900");
+    if (!printWindow) {
+      alert("Trình duyệt đang chặn popup in. Vui lòng cho phép popup.");
+      return;
+    }
+
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>QR - ${venue.name}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 0; padding: 24px; text-align: center; }
+            h1 { margin: 0 0 8px; font-size: 24px; }
+            p { margin: 0 0 12px; color: #555; }
+            img { width: 320px; height: 320px; border: 1px solid #ddd; border-radius: 12px; }
+            .url { margin-top: 12px; font-size: 12px; word-break: break-all; color: #666; }
+          </style>
+        </head>
+        <body>
+          <h1>${venue.name}</h1>
+          <p>Quet ma QR de mo trang quan va nghe audio huong dan</p>
+          <img src="${qrUrl}" alt="QR ${venue.name}" />
+          <div class="url">${landingUrl}</div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
   };
 
   const dailyTraffic = stats?.dailyTraffic || [
@@ -392,6 +534,31 @@ export default function VendorDashboard() {
                         <span className={`text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1 ${sc.color}`}>
                           <StatusIcon size={11} /> {sc.label}
                         </span>
+                        {v.status === "approved" && (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => handleCopyVenueLink(v)}
+                              className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+                              title="Copy link quán"
+                            >
+                              <Copy size={14} />
+                            </button>
+                            <button
+                              onClick={() => handleDownloadVenueQr(v)}
+                              className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="Tải mã QR"
+                            >
+                              <Download size={14} />
+                            </button>
+                            <button
+                              onClick={() => handlePrintVenueQr(v)}
+                              className="p-1.5 text-purple-500 hover:bg-purple-50 rounded-lg transition-colors"
+                              title="In mã QR"
+                            >
+                              <Printer size={14} />
+                            </button>
+                          </div>
+                        )}
                         {v.status !== "approved" && (
                           <button onClick={() => handleDelete(v.id)}
                             className="p-1.5 text-red-400 hover:bg-red-50 rounded-lg transition-colors">
@@ -409,7 +576,7 @@ export default function VendorDashboard() {
           {/* ── REGISTER ── */}
           {tab === "register" && (
             <div className="max-w-lg space-y-4">
-              <p className="text-sm text-gray-500">Quán sẽ ở trạng thái chờ duyệt sau khi đăng ký.</p>
+              <p className="text-sm text-gray-500">Mỗi lần đăng ký quán mới cần thanh toán {VENUE_REGISTRATION_FEE.toLocaleString("vi-VN")} ₫ qua VNPay. Sau thanh toán hệ thống sẽ tự tạo quán ở trạng thái chờ duyệt.</p>
 
               {formError && <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-sm">{formError}</div>}
               {formSuccess && <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-green-700 text-sm">{formSuccess}</div>}
@@ -528,15 +695,15 @@ export default function VendorDashboard() {
                 </div>
               </div>
 
-              <button onClick={handleRegister} disabled={createPoi.isPending}
+              <button onClick={handleRegister} disabled={createPayment.isPending || isProcessingPaidRegistration}
                 className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
-                {createPoi.isPending ? (
+                {createPayment.isPending || isProcessingPaidRegistration ? (
                   <>
                     <span className="animate-spin border-2 border-white border-t-transparent rounded-full w-4 h-4" />
-                    🌐 Đang dịch sang 15 ngôn ngữ...
+                    Đang chuyển sang thanh toán...
                   </>
                 ) : (
-                  <><Plus size={16} /> Đăng ký quán</>
+                  <><Plus size={16} /> Thanh toán & Đăng ký quán</>
                 )}
               </button>
 

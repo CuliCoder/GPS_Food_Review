@@ -163,4 +163,22 @@ router.post("/venues/:id/qr-tap", async (req, res) => {
   res.json({ success: true });
 });
 
+// ── GET /api/venues/:id/qr-landing ───────────────────────────
+// QR in để trước quán sẽ trỏ vào endpoint này, sau đó redirect tới trang chi tiết quán
+router.get("/venues/:id/qr-landing", async (req, res) => {
+  const poi = await Poi.findOneAndUpdate(
+    { id: req.params.id, status: "approved" },
+    { $inc: { qrTapCount: 1 } },
+    { new: true }
+  ).lean({ virtuals: true });
+
+  if (!poi) {
+    res.status(404).json({ success: false, message: "Venue not found" });
+    return;
+  }
+
+  const frontendBase = (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
+  res.redirect(`${frontendBase}/venue/${encodeURIComponent(poi.id)}`);
+});
+
 export default router;

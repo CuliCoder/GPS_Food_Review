@@ -1,10 +1,10 @@
 import { Router } from "express";
-import { mongoose } from "../db/connection.js";
+import { getDbReadyState } from "../db/connection.js";
 
 const router = Router();
 
 router.get("/healthz", (_req, res) => {
-  const dbState = mongoose.connection.readyState;
+  const dbState = getDbReadyState();
   // 1 = connected, 2 = connecting
   const dbStatus = dbState === 1 ? "ok" : dbState === 2 ? "connecting" : "error";
 

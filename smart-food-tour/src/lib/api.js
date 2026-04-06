@@ -11,7 +11,8 @@ const API_BASE = "/api";
  */
 async function apiFetch(path, options = {}) {
   // Lấy token từ store (memory) hoặc localStorage fallback
-  const token = useAppStore.getState().accessToken
+  const authStore = useAppStore.getState();
+  const token = authStore.accessToken
     || localStorage.getItem("sft_token");
 
   const headers = {
@@ -24,6 +25,9 @@ async function apiFetch(path, options = {}) {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
+    if (res.status === 401 && token) {
+      authStore.clearAuth();
+    }
     throw new Error(err.message || `API error ${res.status}`);
   }
 
@@ -278,5 +282,25 @@ export function useRejectPoi() {
       queryClient.invalidateQueries({ queryKey: ["admin/stats"] });
       queryClient.invalidateQueries({ queryKey: ["vendor/venues"] });
     },
+  });
+}
+
+// ── Payment (VNPay) ───────────────────────────────────────────
+
+export async function apiCreatePayment(amount, orderId, description, purpose = "poi_registration") {
+  return apiFetch("/payment/create-order", {
+    method: "POST",
+    body: JSON.stringify({ amount, orderId, description, purpose }),
+  });
+}
+
+export async function apiQueryPaymentStatus(paymentId) {
+  return apiFetch(`/payment/status/${paymentId}`);
+}
+
+export function useCreatePayment() {
+  return useMutation({
+    mutationFn: ({ amount, orderId, description, purpose }) =>
+      apiCreatePayment(amount, orderId, description, purpose),
   });
 }
