@@ -1,6 +1,23 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+function getStoredAuth() {
+  if (typeof window === "undefined") {
+    return { user: null, accessToken: null };
+  }
+
+  try {
+    return {
+      user: JSON.parse(localStorage.getItem("sft_user") || "null"),
+      accessToken: localStorage.getItem("sft_token"),
+    };
+  } catch {
+    return { user: null, accessToken: null };
+  }
+}
+
+const initialAuth = getStoredAuth();
+
 export const useAppStore = create()(
   persist(
     (set) => ({
@@ -22,8 +39,8 @@ export const useAppStore = create()(
       resetPlayedVenues: () => set({ playedVenues: [] }),
 
       // ── Auth ─────────────────────────────────────────────────
-      user: null,
-      accessToken: null,
+      user: initialAuth.user,
+      accessToken: initialAuth.accessToken,
 
       setAuth: (user, accessToken) => {
         // Lưu vào localStorage để dashboard dùng trực tiếp

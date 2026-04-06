@@ -11,7 +11,8 @@ const API_BASE = "/api";
  */
 async function apiFetch(path, options = {}) {
   // Lấy token từ store (memory) hoặc localStorage fallback
-  const token = useAppStore.getState().accessToken
+  const authStore = useAppStore.getState();
+  const token = authStore.accessToken
     || localStorage.getItem("sft_token");
 
   const headers = {
@@ -24,6 +25,9 @@ async function apiFetch(path, options = {}) {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
+    if (res.status === 401 && token) {
+      authStore.clearAuth();
+    }
     throw new Error(err.message || `API error ${res.status}`);
   }
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useAppStore } from "@/store/use-app-store";
 import { useCreatePayment } from "@/lib/api";
@@ -16,8 +16,13 @@ export default function VendorPaymentPage() {
   const [error, setError] = useState("");
   const createPayment = useCreatePayment();
 
+  useEffect(() => {
+    if (!user || user.role !== "vendor") {
+      navigate("/login");
+    }
+  }, [navigate, user]);
+
   if (!user || user.role !== "vendor") {
-    navigate("/login");
     return null;
   }
 

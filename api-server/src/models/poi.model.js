@@ -95,6 +95,10 @@ const PoiSchema = new Schema(
     // Liên kết với Merchant
     vendorId: { type: String, default: null },
 
+    // QR cho khách du lịch quét để mở trang quán
+    landingUrl: String,
+    landingQrImageUrl: String,
+
     // QR thanh toán
     qrImageUrl: String,
     qrTapCount: { type: Number, default: 0 },

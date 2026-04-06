@@ -38,6 +38,7 @@ const PaymentSchema = new Schema(
     paymentCode: String,
     poiId: String,
     usedForPoiAt: Date,
+    registrationClaimedAt: Date,
     // Timestamps
     paidAt: Date,
   },

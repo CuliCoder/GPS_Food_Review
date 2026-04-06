@@ -52,12 +52,14 @@ export default function AdminDashboard() {
   const [tab, setTab] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [rejectModal, setRejectModal] = useState(null);
+  const currentUser = user || JSON.parse(localStorage.getItem("sft_user") || "null");
 
   // Bảo vệ route
   useEffect(() => {
-    const stored = user || JSON.parse(localStorage.getItem("sft_user") || "null");
-    if (!stored || stored.role !== "admin") navigate("/login");
-  }, []);
+    if (!currentUser || currentUser.role !== "admin") {
+      navigate("/login");
+    }
+  }, [currentUser, navigate]);
 
   // React Query hooks — tự động gắn JWT qua apiFetch
   const { data: stats }       = useAdminStats();
@@ -93,8 +95,6 @@ export default function AdminDashboard() {
     clearAuth();
     navigate("/login");
   };
-
-  const currentUser = user || JSON.parse(localStorage.getItem("sft_user") || "null");
 
   const StatCard = ({ label, value, icon: Icon, color, sub }) => (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}

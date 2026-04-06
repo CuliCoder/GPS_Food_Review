@@ -6,7 +6,7 @@
  * Cấu trúc: be/src/data/venues.js
  */
 import "dotenv/config";
-import { connectDB, mongoose } from "../db/connection.js";
+import { connectDB, disconnectDB } from "../db/connection.js";
 import { Poi } from "../models/poi.model.js";
 import { User } from "../models/user.model.js";
 import { venues } from "./venues.js"; // ← import thẳng từ file gốc
@@ -105,7 +105,7 @@ async function seed() {
   console.log("  Vendor : phohanoi@gmail.com      / Vendor@123");
   console.log("  Member : user@example.com        / User@123");
 
-  await mongoose.disconnect();
+  await disconnectDB();
   console.log("\n✅ Seed hoàn tất!");
 }
 
