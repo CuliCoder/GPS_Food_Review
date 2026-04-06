@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "@/store/use-app-store";
 
-const API_BASE = "/api";
+const API_BASE = import.meta.env.VITE_API_BASE;
 
 /**
  * Core fetch helper
