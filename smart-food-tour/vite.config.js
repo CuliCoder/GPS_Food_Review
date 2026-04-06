@@ -17,7 +17,7 @@ export default defineConfig({
     proxy: {
       // Mọi request /api/... sẽ được forward sang BE
       "/api": {
-        target: "http://localhost:3000",
+        target: "https://gps-food-review.onrender.com",
         changeOrigin: true,
       },
     },
