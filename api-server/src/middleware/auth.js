@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import { User } from "../models/user.model.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "change-me";
 
@@ -14,6 +15,13 @@ export function requireAuth(req, res, next) {
 
   try {
     req.user = jwt.verify(token, JWT_SECRET);
+
+    // Fire-and-forget heartbeat so admin dashboard can estimate online users.
+    User.updateOne(
+      { _id: req.user.id },
+      { $set: { lastSeenAt: new Date() } }
+    ).catch(() => {});
+
     next();
   } catch {
     res.status(401).json({ success: false, message: "Invalid or expired token" });

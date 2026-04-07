@@ -29,37 +29,42 @@ export function ChatBox() {
   const handleSend = (text) => {
     if (!text.trim()) return;
     const newMsg = { id: Date.now().toString(), role: "user", text };
+    const history = [...messages, newMsg].slice(-8).map((msg) => ({
+      role: msg.role === "ai" ? "assistant" : msg.role,
+      content: msg.text,
+    }));
+
     setMessages((prev) => [...prev, newMsg]);
     setInput("");
+
+    const [userLat, userLng] = Array.isArray(gpsPosition)
+      ? [gpsPosition[0], gpsPosition[1]]
+      : [undefined, undefined];
 
     chatMutation.mutate(
       {
         message: text,
         lang: language,
-        userLat: gpsPosition[0],
-        userLng: gpsPosition[1],
+        userLat,
+        userLng,
+        history,
       },
       {
         onSuccess: (data) => {
-          // data đã được unwrap từ { success, data: { reply, suggestedVenues } }
-          setMessages((prev) => [
-            ...prev,
-            { id: Date.now().toString(), role: "ai", text: data.reply },
-          ]);
-          // Nếu có venue gợi ý, hiển thị thêm
+          const nextMessages = [
+            { id: Date.now().toString(), role: "ai", text: data.reply || "" },
+          ];
+
           if (data.suggestedVenues?.length > 0) {
-            const venueText = data.suggestedVenues
-              .map((v) => `• ${v.name}`)
-              .join("\n");
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: (Date.now() + 1).toString(),
-                role: "ai",
-                text: `📍 Gợi ý:\n${venueText}`,
-              },
-            ]);
+            const venueText = data.suggestedVenues.map((v) => `• ${v.name}`).join("\n");
+            nextMessages.push({
+              id: (Date.now() + 1).toString(),
+              role: "ai",
+              text: `📍 Gợi ý:\n${venueText}`,
+            });
           }
+
+          setMessages((prev) => [...prev, ...nextMessages]);
         },
         onError: () => {
           setMessages((prev) => [

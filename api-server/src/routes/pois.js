@@ -1,4 +1,6 @@
 import { Router } from "express";
+import path from "path";
+import { readdir, rm } from "fs/promises";
 import { Poi } from "../models/poi.model.js";
 import { Payment } from "../models/payment.model.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
@@ -24,6 +26,89 @@ const LANGUAGES = [
 ];
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const TRANSLATION_PROVIDER = String(process.env.TRANSLATION_PROVIDER || "google").toLowerCase();
+const ANTHROPIC_COOLDOWN_MS = Number(process.env.ANTHROPIC_COOLDOWN_MS || 30 * 60 * 1000);
+let anthropicDisabledUntil = 0;
+const AUDIO_CACHE_DIR = path.join(process.cwd(), ".cache", "audio");
+
+async function cleanupVenueAudioCache(venueId) {
+  try {
+    const files = await readdir(AUDIO_CACHE_DIR);
+    const staleFiles = files.filter((file) => file.startsWith(`${venueId}-`) && file.endsWith(".mp3"));
+    await Promise.all(staleFiles.map((file) => rm(path.join(AUDIO_CACHE_DIR, file), { force: true })));
+    return staleFiles.length;
+  } catch {
+    return 0;
+  }
+}
+
+function cleanText(value, maxLen = 300) {
+  if (typeof value !== "string") return "";
+  return value.trim().replace(/<[^>]*>/g, "").slice(0, maxLen);
+}
+
+function cleanStringArray(values, maxItems = 20, maxLen = 60) {
+  if (!Array.isArray(values)) return [];
+  return values
+    .map((item) => cleanText(item, maxLen))
+    .filter(Boolean)
+    .slice(0, maxItems);
+}
+
+function isValidUrl(value) {
+  if (typeof value !== "string" || !value.trim()) return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function normalizeHours(hours) {
+  if (!hours || typeof hours !== "object" || Array.isArray(hours)) return null;
+  const normalized = {};
+  for (const [day, value] of Object.entries(hours)) {
+    const safeDay = cleanText(day, 12);
+    if (!safeDay) continue;
+    normalized[safeDay] = cleanText(String(value || ""), 40);
+  }
+  return normalized;
+}
+
+function normalizeMenu(menu) {
+  if (!Array.isArray(menu)) return null;
+  const normalized = menu
+    .map((item, index) => {
+      const name = cleanText(item?.name, 120);
+      if (!name) return null;
+
+      const priceNum = Number(item?.price);
+      const price = Number.isFinite(priceNum) && priceNum >= 0 ? Math.round(priceNum) : 0;
+      const imageUrl = cleanText(item?.imageUrl, 500);
+
+      return {
+        id: cleanText(item?.id, 40) || `m-${Date.now()}-${index}`,
+        name,
+        description: cleanText(item?.description, 280),
+        price,
+        isFeatured: Boolean(item?.isFeatured),
+        ...(imageUrl && isValidUrl(imageUrl) ? { imageUrl } : {}),
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 80);
+
+  return normalized;
+}
+
+function normalizeGallery(gallery) {
+  if (!Array.isArray(gallery)) return null;
+  return gallery
+    .map((url) => cleanText(url, 500))
+    .filter((url) => isValidUrl(url))
+    .slice(0, 20);
+}
 
 function buildVenueLandingUrl(venueId) {
   const backendBase = (process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, "");
@@ -68,26 +153,10 @@ async function fallbackTranslateAllLanguages(text, sourceLang, targetLangs) {
   return translations;
 }
 
-/**
- * Dịch text sang 15 ngôn ngữ bằng Claude API
- * @param {string} text - Văn bản gốc
- * @param {string} sourceLang - Mã ngôn ngữ gốc (vi, en, ...)
- * @returns {Record<string, string>} - Map { langCode: translatedText }
- */
-async function translateToAllLanguages(text, sourceLang = "vi") {
-  if (!text?.trim()) {
-    return { [sourceLang]: "" };
-  }
-
-  if (!ANTHROPIC_API_KEY) {
-    console.warn("ANTHROPIC_API_KEY is missing. Falling back to source language only.");
-    return fallbackTranslateAllLanguages(text, sourceLang, LANGUAGES.filter(l => l.code !== sourceLang));
-  }
-
+async function translateByAnthropic(text, sourceLang, targetLangs) {
   const sourceLangName = LANGUAGES.find(l => l.code === sourceLang)?.name || "Vietnamese";
-  const targetLangs = LANGUAGES.filter(l => l.code !== sourceLang);
 
-  const prompt = `You are a professional food and travel translator. 
+  const prompt = `You are a professional food and travel translator.
 Translate the following text from ${sourceLangName} into these ${targetLangs.length} languages.
 Return ONLY a valid JSON object with language codes as keys and translated text as values.
 Keep the tone friendly and appealing for a food tourism app.
@@ -101,40 +170,70 @@ Target languages: ${targetLangs.map(l => `${l.code} (${l.name})`).join(", ")}
 Return format:
 {"${targetLangs[0].code}": "...", "${targetLangs[1].code}": "...", ...}`;
 
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 2000,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Anthropic API error ${response.status}: ${errorText}`);
+  }
+
+  const data = await response.json();
+  const raw = data.content?.[0]?.text || "{}";
+  const clean = raw.replace(/```json|```/g, "").trim();
+  const translations = JSON.parse(clean);
+  translations[sourceLang] = text;
+  return translations;
+}
+
+/**
+ * Dịch text sang 15 ngôn ngữ bằng Claude API
+ * @param {string} text - Văn bản gốc
+ * @param {string} sourceLang - Mã ngôn ngữ gốc (vi, en, ...)
+ * @returns {Record<string, string>} - Map { langCode: translatedText }
+ */
+async function translateToAllLanguages(text, sourceLang = "vi") {
+  if (!text?.trim()) {
+    return { [sourceLang]: "" };
+  }
+
+  const targetLangs = LANGUAGES.filter(l => l.code !== sourceLang);
+
+  // Default provider is free Google public endpoint.
+  if (TRANSLATION_PROVIDER !== "anthropic") {
+    return fallbackTranslateAllLanguages(text, sourceLang, targetLangs);
+  }
+
+  if (!ANTHROPIC_API_KEY) {
+    console.warn("ANTHROPIC_API_KEY is missing. Using Google public translator.");
+    return fallbackTranslateAllLanguages(text, sourceLang, targetLangs);
+  }
+
+  if (Date.now() < anthropicDisabledUntil) {
+    return fallbackTranslateAllLanguages(text, sourceLang, targetLangs);
+  }
+
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-6",
-        max_tokens: 2000,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Anthropic API error ${response.status}: ${errorText}`);
-    }
-
-    const data = await response.json();
-    const raw = data.content?.[0]?.text || "{}";
-
-    // Parse JSON — bỏ markdown nếu có
-    const clean = raw.replace(/```json|```/g, "").trim();
-    const translations = JSON.parse(clean);
-
-    // Thêm ngôn ngữ gốc vào
-    translations[sourceLang] = text;
-    return translations;
+    return await translateByAnthropic(text, sourceLang, targetLangs);
 
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.warn(`Anthropic translation failed (${message}). Using fallback translator.`);
+    if (/credit balance is too low|insufficient|billing/i.test(message)) {
+      anthropicDisabledUntil = Date.now() + ANTHROPIC_COOLDOWN_MS;
+    }
+
+    console.warn(`Anthropic translation failed (${message}). Using Google public translator.`);
     return fallbackTranslateAllLanguages(text, sourceLang, targetLangs);
   }
 }
@@ -273,22 +372,72 @@ router.patch("/pois/:id", requireAuth, requireRole("vendor", "admin"), async (re
     return;
   }
 
-  // Nếu có description mới → dịch lại
-  if (req.body.description && req.body.sourceLang) {
+  const shouldCleanupAudio = req.body.name !== undefined || req.body.description !== undefined;
+
+  // Nếu có name/description mới + sourceLang → dịch lại localizations
+  if ((req.body.description || req.body.name) && req.body.sourceLang) {
     const [nameT, descT] = await Promise.all([
-      req.body.name ? translateToAllLanguages(req.body.name, req.body.sourceLang) : Promise.resolve(null),
-      translateToAllLanguages(req.body.description, req.body.sourceLang),
+      req.body.name
+        ? translateToAllLanguages(cleanText(req.body.name, 140), req.body.sourceLang)
+        : Promise.resolve(null),
+      req.body.description
+        ? translateToAllLanguages(cleanText(req.body.description, 4000), req.body.sourceLang)
+        : Promise.resolve(null),
     ]);
-    if (nameT) { poi.name = nameT["en"] || req.body.name; poi.nameLocal = nameT; }
-    poi.description = descT["en"] || req.body.description;
-    poi.descriptionLocal = descT;
+    if (nameT) {
+      poi.name = nameT["en"] || cleanText(req.body.name, 140);
+      poi.nameLocal = nameT;
+    }
+    if (descT) {
+      poi.description = descT["en"] || cleanText(req.body.description, 4000);
+      poi.descriptionLocal = descT;
+    }
   }
 
-  const allowed = ["address", "priceRange", "tags", "phone", "website", "hours", "isOpen", "imageUrl", "menu", "gallery"];
-  allowed.forEach(k => { if (req.body[k] !== undefined) poi[k] = req.body[k]; });
+  if (req.body.category !== undefined) poi.category = cleanText(req.body.category, 40);
+  if (req.body.address !== undefined) poi.address = cleanText(req.body.address, 240);
+  if (req.body.phone !== undefined) poi.phone = cleanText(req.body.phone, 40);
+  if (req.body.website !== undefined) {
+    const website = cleanText(req.body.website, 500);
+    poi.website = website && isValidUrl(website) ? website : "";
+  }
+  if (req.body.priceRange !== undefined) {
+    const allowedRanges = ["$", "$$", "$$$"];
+    poi.priceRange = allowedRanges.includes(req.body.priceRange) ? req.body.priceRange : poi.priceRange;
+  }
+  if (req.body.tags !== undefined) poi.tags = cleanStringArray(req.body.tags, 30, 40);
+  if (req.body.isOpen !== undefined) poi.isOpen = Boolean(req.body.isOpen);
+
+  if (req.body.imageUrl !== undefined) {
+    const imageUrl = cleanText(req.body.imageUrl, 500);
+    poi.imageUrl = imageUrl && isValidUrl(imageUrl) ? imageUrl : "";
+  }
+
+  if (req.body.hours !== undefined) {
+    const hours = normalizeHours(req.body.hours);
+    if (hours) poi.hours = hours;
+  }
+
+  if (req.body.menu !== undefined) {
+    const menu = normalizeMenu(req.body.menu);
+    if (menu) poi.menu = menu;
+  }
+
+  if (req.body.gallery !== undefined) {
+    const gallery = normalizeGallery(req.body.gallery);
+    if (gallery) poi.gallery = gallery;
+  }
 
   if (req.user.role !== "admin") poi.status = "pending";
   await poi.save();
+
+  if (shouldCleanupAudio) {
+    const deletedCount = await cleanupVenueAudioCache(poi.id);
+    if (deletedCount > 0) {
+      console.log(`🧹 Deleted ${deletedCount} stale audio cache files for venue ${poi.id}`);
+    }
+  }
+
   res.json({ success: true, data: poi });
 });
 
@@ -318,6 +467,7 @@ router.patch("/pois/:id/reject", requireAuth, requireRole("admin"), async (req, 
 router.delete("/pois/:id", requireAuth, requireRole("admin"), async (req, res) => {
   const poi = await Poi.findOneAndDelete({ id: req.params.id });
   if (!poi) { res.status(404).json({ success: false, message: "POI not found" }); return; }
+  await cleanupVenueAudioCache(poi.id);
   res.json({ success: true, message: `Deleted: ${poi.name}` });
 });
 
@@ -332,6 +482,7 @@ router.delete("/pois/:id/mine", requireAuth, requireRole("vendor", "admin"), asy
     res.status(400).json({ success: false, message: "Cannot delete approved venue. Contact admin." }); return;
   }
   await poi.deleteOne();
+  await cleanupVenueAudioCache(poi.id);
   res.json({ success: true, message: "Deleted successfully" });
 });
 

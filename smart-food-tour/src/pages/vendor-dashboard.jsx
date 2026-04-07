@@ -13,7 +13,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import {
-  useVendorStats, useVendorVenues, useCreatePoi, useDeletePoi, useCreatePayment,
+  useVendorStats, useVendorVenues, useCreatePoi, useDeletePoi, useCreatePayment, useUpdatePoi,
 } from "@/lib/api";
 import { useAppStore } from "@/store/use-app-store";
 
@@ -54,6 +54,58 @@ const STATUS_CONFIG = {
 };
 
 const DEFAULT_POSITION = [10.7769, 106.7009];
+const WEEK_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const DEFAULT_HOURS = {
+  Mon: "08:00 - 22:00",
+  Tue: "08:00 - 22:00",
+  Wed: "08:00 - 22:00",
+  Thu: "08:00 - 22:00",
+  Fri: "08:00 - 22:00",
+  Sat: "08:00 - 22:00",
+  Sun: "08:00 - 22:00",
+};
+
+function toPlainObject(value) {
+  if (!value) return {};
+  if (value instanceof Map) return Object.fromEntries(value);
+  if (typeof value === "object" && !Array.isArray(value)) return value;
+  return {};
+}
+
+function getLocalizedText(venue, field, preferredLang = "vi") {
+  const localized = toPlainObject(venue?.[`${field}Local`]);
+  return localized[preferredLang] || localized.en || venue?.[field] || "";
+}
+
+function parseHourRange(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized || normalized.toLowerCase() === "closed") {
+    return { open: "08:00", close: "22:00", closed: true };
+  }
+
+  const match = normalized.match(/^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/);
+  if (!match) {
+    return { open: "08:00", close: "22:00", closed: false };
+  }
+
+  const format = (time) => {
+    const [h, m] = time.split(":").map(Number);
+    const hh = String(Number.isFinite(h) ? Math.max(0, Math.min(23, h)) : 8).padStart(2, "0");
+    const mm = String(Number.isFinite(m) ? Math.max(0, Math.min(59, m)) : 0).padStart(2, "0");
+    return `${hh}:${mm}`;
+  };
+
+  return {
+    open: format(match[1]),
+    close: format(match[2]),
+    closed: false,
+  };
+}
+
+function buildHourRange({ open, close, closed }) {
+  if (closed) return "Closed";
+  return `${open} - ${close}`;
+}
 
 const vendorLocationIcon = L.divIcon({
   className: "custom-vendor-location-marker",
@@ -133,6 +185,29 @@ export default function VendorDashboard() {
   const [isLocating, setIsLocating] = useState(false);
   const [isResolvingAddress, setIsResolvingAddress] = useState(false);
   const [isProcessingPaidRegistration, setIsProcessingPaidRegistration] = useState(false);
+  const [editingVenueId, setEditingVenueId] = useState(null);
+  const [editError, setEditError] = useState("");
+  const [editSuccess, setEditSuccess] = useState("");
+  const [editForm, setEditForm] = useState({
+    name: "",
+    description: "",
+    sourceLang: "vi",
+    category: "vietnamese",
+    address: "",
+    phone: "",
+    website: "",
+    priceRange: "$",
+    imageUrl: "",
+    isOpen: true,
+    hours: { ...DEFAULT_HOURS },
+    menu: [],
+    gallery: [],
+  });
+  const [editHourPicker, setEditHourPicker] = useState(() =>
+    Object.fromEntries(
+      WEEK_DAYS.map((day) => [day, parseHourRange(DEFAULT_HOURS[day])])
+    )
+  );
   const currentUser = user || JSON.parse(localStorage.getItem("sft_user") || "null");
 
   useEffect(() => {
@@ -146,10 +221,154 @@ export default function VendorDashboard() {
   const createPoi  = useCreatePoi();
   const createPayment = useCreatePayment();
   const deletePoi  = useDeletePoi();
+  const updatePoi = useUpdatePoi();
 
   const handleLogout = () => { clearAuth(); navigate("/login"); };
 
   const handleField = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const updateEditField = (key, value) => {
+    setEditForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const updateEditHour = (day, value) => {
+    setEditForm((prev) => ({
+      ...prev,
+      hours: {
+        ...(prev.hours || {}),
+        [day]: value,
+      },
+    }));
+  };
+
+  const updateEditHourPicker = (day, key, value) => {
+    setEditHourPicker((prev) => {
+      const nextDay = { ...(prev[day] || parseHourRange(DEFAULT_HOURS[day])) };
+      nextDay[key] = value;
+      const next = { ...prev, [day]: nextDay };
+
+      updateEditHour(day, buildHourRange(nextDay));
+      return next;
+    });
+  };
+
+  const addEditMenuItem = () => {
+    setEditForm((prev) => ({
+      ...prev,
+      menu: [
+        ...(prev.menu || []),
+        {
+          id: `m-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          name: "",
+          description: "",
+          price: 0,
+          imageUrl: "",
+          isFeatured: false,
+        },
+      ],
+    }));
+  };
+
+  const updateEditMenuItem = (index, key, value) => {
+    setEditForm((prev) => ({
+      ...prev,
+      menu: (prev.menu || []).map((item, i) => (i === index ? { ...item, [key]: value } : item)),
+    }));
+  };
+
+  const removeEditMenuItem = (index) => {
+    setEditForm((prev) => ({
+      ...prev,
+      menu: (prev.menu || []).filter((_, i) => i !== index),
+    }));
+  };
+
+  const addEditGalleryItem = () => {
+    setEditForm((prev) => ({
+      ...prev,
+      gallery: [...(prev.gallery || []), ""],
+    }));
+  };
+
+  const updateEditGalleryItem = (index, value) => {
+    setEditForm((prev) => ({
+      ...prev,
+      gallery: (prev.gallery || []).map((item, i) => (i === index ? value : item)),
+    }));
+  };
+
+  const removeEditGalleryItem = (index) => {
+    setEditForm((prev) => ({
+      ...prev,
+      gallery: (prev.gallery || []).filter((_, i) => i !== index),
+    }));
+  };
+
+  const handleOpenEditVenue = (venue) => {
+    setEditError("");
+    setEditSuccess("");
+    setEditingVenueId(venue.id);
+    setEditForm({
+      name: getLocalizedText(venue, "name", "vi"),
+      description: getLocalizedText(venue, "description", "vi"),
+      sourceLang: "vi",
+      category: venue.category || "vietnamese",
+      address: venue.address || "",
+      phone: venue.phone || "",
+      website: venue.website || "",
+      priceRange: venue.priceRange || "$",
+      imageUrl: venue.imageUrl || "",
+      isOpen: Boolean(venue.isOpen),
+      hours: venue.hours || { ...DEFAULT_HOURS },
+      menu: Array.isArray(venue.menu) ? venue.menu : [],
+      gallery: Array.isArray(venue.gallery) ? venue.gallery : [],
+    });
+
+    const sourceHours = venue.hours || DEFAULT_HOURS;
+    setEditHourPicker(
+      Object.fromEntries(
+        WEEK_DAYS.map((day) => [day, parseHourRange(sourceHours[day] || DEFAULT_HOURS[day])])
+      )
+    );
+  };
+
+  const handleSaveVenueEdit = () => {
+    if (!editingVenueId) return;
+    setEditError("");
+    setEditSuccess("");
+
+    if (!editForm.name?.trim() || !editForm.address?.trim()) {
+      setEditError("Tên quán và địa chỉ không được để trống.");
+      return;
+    }
+
+    const payload = {
+      id: editingVenueId,
+      name: editForm.name,
+      description: editForm.description,
+      sourceLang: editForm.sourceLang || "vi",
+      category: editForm.category,
+      address: editForm.address,
+      phone: editForm.phone,
+      website: editForm.website,
+      priceRange: editForm.priceRange,
+      imageUrl: editForm.imageUrl,
+      isOpen: editForm.isOpen,
+      hours: editForm.hours,
+      menu: (editForm.menu || []).filter((item) => item?.name?.trim()),
+      gallery: (editForm.gallery || []).map((x) => x?.trim()).filter(Boolean),
+    };
+
+    updatePoi.mutate(payload, {
+      onSuccess: () => {
+        setEditSuccess("Đã lưu cập nhật quán thành công.");
+        refetchVenues();
+      },
+      onError: (e) => {
+        setEditError(e.message || "Không thể cập nhật quán.");
+      },
+    });
+  };
 
   const resolveAddressFromCoordinates = async (lat, lng) => {
     setIsResolvingAddress(true);
@@ -534,6 +753,13 @@ export default function VendorDashboard() {
                         <span className={`text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1 ${sc.color}`}>
                           <StatusIcon size={11} /> {sc.label}
                         </span>
+                        <button
+                          onClick={() => handleOpenEditVenue(v)}
+                          className="p-1.5 text-orange-500 hover:bg-orange-50 rounded-lg transition-colors"
+                          title="Chỉnh sửa quán"
+                        >
+                          <Edit2 size={14} />
+                        </button>
                         {v.status === "approved" && (
                           <div className="flex items-center gap-1.5">
                             <button
@@ -569,6 +795,264 @@ export default function VendorDashboard() {
                     </div>
                   );
                 })
+              )}
+
+              {editingVenueId && (
+                <div className="bg-white rounded-2xl p-4 md:p-5 border border-orange-200 shadow-sm">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-gray-800">Chỉnh sửa quán: {editForm.name || editingVenueId}</h3>
+                    <button
+                      onClick={() => {
+                        setEditingVenueId(null);
+                        setEditError("");
+                        setEditSuccess("");
+                      }}
+                      className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50"
+                    >
+                      Đóng
+                    </button>
+                  </div>
+
+                  {editError && <div className="mb-3 bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-sm">{editError}</div>}
+                  {editSuccess && <div className="mb-3 bg-green-50 border border-green-200 rounded-xl p-3 text-green-700 text-sm">{editSuccess}</div>}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium text-gray-700">Tên quán</label>
+                      <input
+                        value={editForm.name}
+                        onChange={(e) => updateEditField("name", e.target.value)}
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium text-gray-700">Danh mục</label>
+                      <select
+                        value={editForm.category}
+                        onChange={(e) => updateEditField("category", e.target.value)}
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm"
+                      >
+                        {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium text-gray-700">Địa chỉ</label>
+                      <input
+                        value={editForm.address}
+                        onChange={(e) => updateEditField("address", e.target.value)}
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium text-gray-700">Số điện thoại</label>
+                      <input
+                        value={editForm.phone}
+                        onChange={(e) => updateEditField("phone", e.target.value)}
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium text-gray-700">Website</label>
+                      <input
+                        value={editForm.website}
+                        onChange={(e) => updateEditField("website", e.target.value)}
+                        placeholder="https://example.com"
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium text-gray-700">Ảnh đại diện quán (URL)</label>
+                      <input
+                        value={editForm.imageUrl}
+                        onChange={(e) => updateEditField("imageUrl", e.target.value)}
+                        placeholder="https://..."
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium text-gray-700">Mức giá</label>
+                      <select
+                        value={editForm.priceRange}
+                        onChange={(e) => updateEditField("priceRange", e.target.value)}
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm"
+                      >
+                        <option value="$">$</option>
+                        <option value="$$">$$</option>
+                        <option value="$$$">$$$</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium text-gray-700">Ngôn ngữ nhập</label>
+                      <select
+                        value={editForm.sourceLang}
+                        onChange={(e) => updateEditField("sourceLang", e.target.value)}
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm"
+                      >
+                        <option value="vi">Tiếng Việt</option>
+                        <option value="en">English</option>
+                        <option value="zh">中文</option>
+                        <option value="ja">日本語</option>
+                        <option value="ko">한국어</option>
+                        <option value="fr">Français</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1 flex items-end">
+                      <label className="w-full text-sm font-medium text-gray-700 flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(editForm.isOpen)}
+                          onChange={(e) => updateEditField("isOpen", e.target.checked)}
+                        />
+                        Đang mở cửa
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 mt-3">
+                    <label className="text-sm font-medium text-gray-700">Mô tả quán</label>
+                    <textarea
+                      rows={3}
+                      value={editForm.description}
+                      onChange={(e) => updateEditField("description", e.target.value)}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm resize-none"
+                    />
+                  </div>
+
+                  <div className="mt-4">
+                    <p className="text-sm font-semibold text-gray-700 mb-2">Khung giờ hoạt động</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {WEEK_DAYS.map((day) => (
+                        <div key={day} className="grid grid-cols-12 items-center gap-2">
+                          <span className="col-span-2 text-xs text-gray-500">{day}</span>
+                          <label className="col-span-3 flex items-center gap-2 text-xs text-gray-600">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(editHourPicker?.[day]?.closed)}
+                              onChange={(e) => updateEditHourPicker(day, "closed", e.target.checked)}
+                            />
+                            Đóng cửa
+                          </label>
+                          <input
+                            type="time"
+                            value={editHourPicker?.[day]?.open || "08:00"}
+                            onChange={(e) => updateEditHourPicker(day, "open", e.target.value)}
+                            disabled={Boolean(editHourPicker?.[day]?.closed)}
+                            className="col-span-3 px-2 py-2 border border-gray-200 rounded-lg text-sm disabled:bg-gray-100"
+                          />
+                          <input
+                            type="time"
+                            value={editHourPicker?.[day]?.close || "22:00"}
+                            onChange={(e) => updateEditHourPicker(day, "close", e.target.value)}
+                            disabled={Boolean(editHourPicker?.[day]?.closed)}
+                            className="col-span-4 px-2 py-2 border border-gray-200 rounded-lg text-sm disabled:bg-gray-100"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm font-semibold text-gray-700">Menu quán</p>
+                      <button
+                        onClick={addEditMenuItem}
+                        className="text-xs px-3 py-1.5 rounded-lg border border-orange-200 text-orange-600 hover:bg-orange-50"
+                      >
+                        Thêm món
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {(editForm.menu || []).map((item, index) => (
+                        <div key={item.id || index} className="grid grid-cols-1 md:grid-cols-12 gap-2 border border-gray-100 rounded-xl p-2.5">
+                          <input
+                            value={item.name || ""}
+                            onChange={(e) => updateEditMenuItem(index, "name", e.target.value)}
+                            placeholder="Tên món"
+                            className="md:col-span-3 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                          />
+                          <input
+                            value={item.description || ""}
+                            onChange={(e) => updateEditMenuItem(index, "description", e.target.value)}
+                            placeholder="Mô tả"
+                            className="md:col-span-4 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                          />
+                          <input
+                            type="number"
+                            min={0}
+                            value={item.price ?? 0}
+                            onChange={(e) => updateEditMenuItem(index, "price", Number(e.target.value || 0))}
+                            placeholder="Giá"
+                            className="md:col-span-2 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                          />
+                          <input
+                            value={item.imageUrl || ""}
+                            onChange={(e) => updateEditMenuItem(index, "imageUrl", e.target.value)}
+                            placeholder="Ảnh món (URL)"
+                            className="md:col-span-2 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                          />
+                          <button
+                            onClick={() => removeEditMenuItem(index)}
+                            className="md:col-span-1 px-2 py-2 text-red-500 hover:bg-red-50 rounded-lg"
+                            title="Xóa món"
+                          >
+                            <Trash2 size={14} className="mx-auto" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm font-semibold text-gray-700">Hình ảnh gallery</p>
+                      <button
+                        onClick={addEditGalleryItem}
+                        className="text-xs px-3 py-1.5 rounded-lg border border-orange-200 text-orange-600 hover:bg-orange-50"
+                      >
+                        Thêm ảnh
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {(editForm.gallery || []).map((img, index) => (
+                        <div key={`${img}-${index}`} className="flex items-center gap-2">
+                          <input
+                            value={img || ""}
+                            onChange={(e) => updateEditGalleryItem(index, e.target.value)}
+                            placeholder="https://..."
+                            className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                          />
+                          <button
+                            onClick={() => removeEditGalleryItem(index)}
+                            className="px-2 py-2 text-red-500 hover:bg-red-50 rounded-lg"
+                            title="Xóa ảnh"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex items-center gap-2">
+                    <button
+                      onClick={handleSaveVenueEdit}
+                      disabled={updatePoi.isPending}
+                      className="px-4 py-2.5 bg-orange-500 text-white rounded-xl text-sm font-semibold hover:bg-orange-600 disabled:opacity-60"
+                    >
+                      {updatePoi.isPending ? "Đang lưu..." : "Lưu thay đổi"}
+                    </button>
+                    <p className="text-xs text-gray-500">Sau khi chỉnh sửa, quán sẽ chuyển về trạng thái chờ duyệt.</p>
+                  </div>
+                </div>
               )}
             </div>
           )}

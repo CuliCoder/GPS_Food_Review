@@ -21,6 +21,8 @@ const UserSchema = new Schema(
     shopName: String,
     // Preference
     preferredLang: { type: String, default: "en" },
+    // Last activity timestamp used for online user statistics
+    lastSeenAt: { type: Date, default: null },
   },
   {
     timestamps: true,

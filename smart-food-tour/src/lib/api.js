@@ -2,6 +2,20 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "@/store/use-app-store";
 
 const API_BASE = import.meta.env.VITE_API_BASE;
+const GUEST_TOKEN_STORAGE_KEY = "sft_guest_token";
+
+export function getOrCreateGuestToken() {
+  const existing = localStorage.getItem(GUEST_TOKEN_STORAGE_KEY);
+  if (existing) return existing;
+
+  const generated =
+    (typeof crypto !== "undefined" && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+
+  localStorage.setItem(GUEST_TOKEN_STORAGE_KEY, generated);
+  return generated;
+}
 
 /**
  * Core fetch helper
@@ -79,8 +93,12 @@ export function useLanguages() {
   });
 }
 
-export function getAudioUrl(venueId, lang = "en") {
-  return `${API_BASE}/audio/${venueId}?lang=${lang}`;
+export function getAudioUrl(venueId, lang = "en", version = "") {
+  const params = new URLSearchParams({ lang });
+  if (version) {
+    params.set("v", String(version));
+  }
+  return `${API_BASE}/audio/${venueId}?${params.toString()}`;
 }
 
 export async function fetchAudioTranscript(venueId, lang = "en") {
@@ -112,6 +130,24 @@ export function useQrTap() {
   return useMutation({
     mutationFn: (venueId) =>
       apiFetch(`/venues/${venueId}/qr-tap`, { method: "POST" }),
+  });
+}
+
+export function useCreateVenueReview() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ venueId, payload }) =>
+      apiFetch(`/venues/${venueId}/reviews`, {
+        method: "POST",
+        headers: {
+          "x-guest-token": getOrCreateGuestToken(),
+        },
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["venues", variables.venueId] });
+    },
   });
 }
 
@@ -164,6 +200,7 @@ export function useAdminStats() {
   return useQuery({
     queryKey: ["admin/stats"],
     queryFn: () => apiFetch("/admin/stats"),
+    refetchInterval: 30000,
   });
 }
 

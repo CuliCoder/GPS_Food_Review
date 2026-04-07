@@ -190,11 +190,12 @@ export default function AdminDashboard() {
           {/* ── DASHBOARD ── */}
           {tab === "dashboard" && (
             <div className="space-y-6">
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
                 <StatCard label="Tổng điểm bán"   value={stats?.totalVenues}                                    icon={Store}     color="bg-orange-500" />
                 <StatCard label="Chủ quán"         value={stats?.totalVendors}                                   icon={Users}     color="bg-blue-500" />
                 <StatCard label="Chờ phê duyệt"   value={stats?.pendingApprovals} sub="Cần xem xét"            icon={CheckSquare} color="bg-yellow-500" />
                 <StatCard label="Tổng lượt nghe"  value={stats?.totalAudioPlays?.toLocaleString()}              icon={Volume2}   color="bg-green-500" />
+                <StatCard label="Khách du lịch online" value={stats?.onlineGuests ?? 0} sub="Khách vãng lai hoạt động trong 5 phút" icon={TrendingUp} color="bg-emerald-500" />
               </div>
 
               <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">

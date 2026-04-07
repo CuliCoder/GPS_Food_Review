@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useRoute, Link } from "wouter";
-import { useVenueDetail, getAudioUrl, useRespect, useQrTap } from "@/lib/api";
+import { useVenueDetail, getAudioUrl, useRespect, useQrTap, useCreateVenueReview } from "@/lib/api";
 import { useAppStore } from "@/store/use-app-store";
 import { playAudioFromUrl, stopAudioTranscript } from "@/lib/tts";
 import {
@@ -21,10 +21,14 @@ export default function VenueDetail() {
   const [activeTab, setActiveTab] = useState("about");
   const [showQr, setShowQr] = useState(false);
   const [respected, setRespected] = useState(false);
+  const [reviewAuthor, setReviewAuthor] = useState("");
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
 
   const { data: venue, isLoading, error } = useVenueDetail(venueId, language);
   const respectMutation = useRespect();
   const qrTapMutation = useQrTap();
+  const createReviewMutation = useCreateVenueReview();
 
   useEffect(() => {
     return () => stopAudioTranscript();
@@ -38,7 +42,8 @@ export default function VenueDetail() {
     }
 
     setIsPlaying(true);
-    const audioUrl = getAudioUrl(venueId, language);
+    const audioVersion = venue?.updatedAt || "";
+    const audioUrl = getAudioUrl(venueId, language, audioVersion);
     const audio = playAudioFromUrl(audioUrl, venueId, {
       onEnd: () => setIsPlaying(false),
       onError: () => {
@@ -63,6 +68,49 @@ export default function VenueDetail() {
     setShowQr(true);
   };
 
+  const handleSubmitReview = (e) => {
+    e.preventDefault();
+
+    const author = reviewAuthor.trim();
+    const comment = reviewComment.trim();
+
+    if (author.length < 2) {
+      toast({ title: "Name required", description: "Please enter at least 2 characters." });
+      return;
+    }
+
+    if (comment.length < 5) {
+      toast({ title: "Review too short", description: "Please write at least 5 characters." });
+      return;
+    }
+
+    createReviewMutation.mutate(
+      {
+        venueId,
+        payload: {
+          author,
+          rating: reviewRating,
+          comment,
+          lang: language,
+        },
+      },
+      {
+        onSuccess: () => {
+          setReviewComment("");
+          setReviewRating(5);
+          toast({ title: "Thanks for your review", description: "Your feedback was posted." });
+        },
+        onError: (error) => {
+          toast({
+            title: "Could not post review",
+            description: error.message || "Please try again later.",
+            variant: "destructive",
+          });
+        },
+      }
+    );
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -83,8 +131,15 @@ export default function VenueDetail() {
     );
   }
 
-  const today = new Date().toLocaleDateString("en-US", { weekday: "short" });
-  const todaysHours = venue.hours?.[today] || "Check with restaurant";
+  const dayOrder = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const jsDayOrder = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const todayKey = jsDayOrder[new Date().getDay()];
+  const todaysHours = venue.hours?.[todayKey] || "Check with restaurant";
+  const operatingHours = dayOrder.map((day) => ({
+    day,
+    hours: venue.hours?.[day] || "Closed",
+    isToday: day === todayKey,
+  }));
   const tabs = [
     { id: "about", label: "About" },
     { id: "menu", label: "Menu" },
@@ -284,6 +339,56 @@ export default function VenueDetail() {
             {/* Reviews */}
             {activeTab === "reviews" && (
               <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+                <form
+                  onSubmit={handleSubmitReview}
+                  className="bg-white rounded-2xl p-5 border border-border/40 mb-4 space-y-3"
+                >
+                  <h3 className="font-bold text-foreground">Share your experience</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <input
+                      type="text"
+                      value={reviewAuthor}
+                      onChange={(e) => setReviewAuthor(e.target.value)}
+                      maxLength={60}
+                      placeholder="Your name"
+                      className="sm:col-span-2 w-full h-10 rounded-xl border border-border/60 px-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                    <select
+                      value={reviewRating}
+                      onChange={(e) => setReviewRating(Number(e.target.value))}
+                      className="w-full h-10 rounded-xl border border-border/60 px-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                    >
+                      <option value={5}>5 stars</option>
+                      <option value={4}>4 stars</option>
+                      <option value={3}>3 stars</option>
+                      <option value={2}>2 stars</option>
+                      <option value={1}>1 star</option>
+                    </select>
+                  </div>
+
+                  <textarea
+                    value={reviewComment}
+                    onChange={(e) => setReviewComment(e.target.value)}
+                    maxLength={600}
+                    rows={4}
+                    placeholder="What did you like or dislike?"
+                    className="w-full rounded-xl border border-border/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs text-muted-foreground">
+                      Anti-spam protection is enabled.
+                    </p>
+                    <button
+                      type="submit"
+                      disabled={createReviewMutation.isPending}
+                      className="h-10 px-4 rounded-xl bg-primary text-white text-sm font-semibold disabled:opacity-60"
+                    >
+                      {createReviewMutation.isPending ? "Posting..." : "Post review"}
+                    </button>
+                  </div>
+                </form>
+
                 {venue.reviews?.length > 0 ? (
                   <div className="space-y-3">
                     {venue.reviews.map((review) => (
@@ -330,7 +435,17 @@ export default function VenueDetail() {
                 )}
                 <div className="flex gap-3">
                   <Clock className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                  <span className="text-muted-foreground">Today: {todaysHours}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-muted-foreground">Today: {todaysHours}</p>
+                    <div className="mt-2 space-y-1.5">
+                      {operatingHours.map((item) => (
+                        <div key={item.day} className="flex items-center justify-between text-xs">
+                          <span className={item.isToday ? "font-semibold text-foreground" : "text-muted-foreground"}>{item.day}</span>
+                          <span className={item.isToday ? "font-semibold text-foreground" : "text-muted-foreground"}>{item.hours}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
                 {venue.phone && (
                   <div className="flex gap-3">

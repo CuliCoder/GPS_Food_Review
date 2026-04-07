@@ -4,6 +4,7 @@ import { User } from "../models/user.model.js";
 import { Poi } from "../models/poi.model.js";
 import { AudioStat } from "../models/audioStat.model.js";
 import { signTokens, requireAuth, requireRole } from "../middleware/auth.js";
+import { getOnlineGuestCount } from "../lib/onlineGuests.js";
 
 const router = Router();
 
@@ -24,6 +25,9 @@ router.post("/auth/login", async (req, res) => {
     res.status(403).json({ success: false, message: "Account is blocked" });
     return;
   }
+
+  user.lastSeenAt = new Date();
+  await user.save();
 
   const { accessToken, refreshToken } = signTokens({
     id: user._id,
@@ -55,7 +59,7 @@ router.post("/auth/register", async (req, res) => {
     return;
   }
 
-  const user = await User.create({ email, password, name, phone, role: "member" });
+  const user = await User.create({ email, password, name, phone, role: "member", lastSeenAt: new Date() });
   const { accessToken, refreshToken } = signTokens({
     id: user._id,
     email: user.email,
@@ -90,6 +94,7 @@ router.post("/auth/register/vendor", async (req, res) => {
     email, password, name, phone, shopName,
     role: "vendor",
     status: "pending",
+    lastSeenAt: new Date(),
   });
 
   const { accessToken, refreshToken } = signTokens({
@@ -231,11 +236,19 @@ router.patch("/admin/pending/:id", requireAuth, requireRole("admin"), async (req
 
 // ── Admin: thống kê tổng quan ─────────────────────────────────
 router.get("/admin/stats", requireAuth, requireRole("admin"), async (req, res) => {
-  const [totalVenues, totalVendors, pendingApprovals, totalAudioPlays] = await Promise.all([
+  const onlineWindowMinutes = Number(process.env.ONLINE_WINDOW_MINUTES || 5);
+  const onlineSince = new Date(Date.now() - onlineWindowMinutes * 60 * 1000);
+
+  const [totalVenues, totalVendors, pendingApprovals, totalAudioPlays, onlineUsers, onlineGuests] = await Promise.all([
     Poi.countDocuments({ status: "approved" }),
     User.countDocuments({ role: "vendor" }),
     Poi.countDocuments({ status: "pending" }),
     AudioStat.countDocuments(),
+    User.countDocuments({
+      status: { $ne: "blocked" },
+      lastSeenAt: { $gte: onlineSince },
+    }),
+    getOnlineGuestCount(),
   ]);
 
   // Top ngôn ngữ
@@ -248,7 +261,15 @@ router.get("/admin/stats", requireAuth, requireRole("admin"), async (req, res) =
 
   res.json({
     success: true,
-    data: { totalVenues, totalVendors, pendingApprovals, totalAudioPlays, topLanguages: topLangs },
+    data: {
+      totalVenues,
+      totalVendors,
+      pendingApprovals,
+      totalAudioPlays,
+      onlineUsers,
+      onlineGuests,
+      topLanguages: topLangs,
+    },
   });
 });
 
