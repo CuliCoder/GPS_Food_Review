@@ -149,7 +149,7 @@ export default function VenueDetail() {
   return (
     <div className="min-h-screen bg-[#f8f7f4]">
       {/* Hero */}
-      <div className="relative h-[45vh] w-full overflow-hidden">
+      <div className="relative h-[38vh] sm:h-[45vh] w-full overflow-hidden">
         <img
           src={venue.imageUrl || "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=1920&q=80"}
           alt={venue.name}
@@ -165,11 +165,11 @@ export default function VenueDetail() {
           </Link>
         </div>
 
-        <div className="absolute bottom-0 left-0 w-full p-5 sm:p-8 text-white">
+        <div className="absolute bottom-0 left-0 w-full p-4 sm:p-8 text-white">
           <span className="inline-block px-3 py-1 bg-primary/90 backdrop-blur-sm rounded-full text-xs font-bold tracking-wider uppercase mb-3">
             {venue.category}
           </span>
-          <h1 className="text-3xl sm:text-4xl font-bold mb-3 leading-tight">{venue.name}</h1>
+          <h1 className="text-2xl sm:text-4xl font-bold mb-3 leading-tight">{venue.name}</h1>
           <div className="flex flex-wrap gap-2 text-sm">
             <span className="flex items-center gap-1.5 bg-black/40 backdrop-blur-sm px-3 py-1.5 rounded-full">
               <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
@@ -190,13 +190,13 @@ export default function VenueDetail() {
       </div>
 
       {/* Action buttons */}
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 -mt-5 relative z-10 mb-6 flex gap-3">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 -mt-5 relative z-10 mb-6 flex flex-wrap gap-3">
         {/* Audio guide */}
         <motion.button
           whileHover={{ scale: 1.01 }}
           whileTap={{ scale: 0.99 }}
           onClick={handlePlayAudio}
-          className={`flex-1 py-3.5 px-6 rounded-2xl flex items-center justify-center gap-3 font-semibold text-base shadow-lg transition-all duration-300 ${
+          className={`w-full sm:flex-1 py-3.5 px-6 rounded-2xl flex items-center justify-center gap-3 font-semibold text-base shadow-lg transition-all duration-300 ${
             isPlaying
               ? "bg-white border-2 border-primary text-primary"
               : "bg-gradient-to-r from-primary to-orange-500 text-white"
@@ -212,7 +212,7 @@ export default function VenueDetail() {
           whileTap={{ scale: 0.95 }}
           onClick={handleRespect}
           disabled={respected}
-          className={`py-3.5 px-4 rounded-2xl flex items-center gap-2 font-semibold shadow-lg transition-all ${
+          className={`flex-1 sm:flex-none justify-center py-3.5 px-4 rounded-2xl flex items-center gap-2 font-semibold shadow-lg transition-all ${
             respected
               ? "bg-red-100 text-red-500 border-2 border-red-300"
               : "bg-white border-2 border-border text-foreground hover:border-red-300"
@@ -228,7 +228,7 @@ export default function VenueDetail() {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={handleQrTap}
-            className="py-3.5 px-4 rounded-2xl bg-white border-2 border-border flex items-center gap-2 font-semibold shadow-lg hover:border-primary transition-all"
+            className="flex-1 sm:flex-none justify-center py-3.5 px-4 rounded-2xl bg-white border-2 border-border flex items-center gap-2 font-semibold shadow-lg hover:border-primary transition-all"
           >
             <QrCode className="w-5 h-5 text-primary" />
             <span className="text-sm">Pay</span>
@@ -375,7 +375,7 @@ export default function VenueDetail() {
                     className="w-full rounded-xl border border-border/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
                   />
 
-                  <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <p className="text-xs text-muted-foreground">
                       Anti-spam protection is enabled.
                     </p>
