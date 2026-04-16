@@ -586,19 +586,47 @@ export default function VendorDashboard() {
             p { margin: 0 0 12px; color: #555; }
             img { width: 320px; height: 320px; border: 1px solid #ddd; border-radius: 12px; }
             .url { margin-top: 12px; font-size: 12px; word-break: break-all; color: #666; }
+            .hint { margin-top: 10px; font-size: 12px; color: #c2410c; }
           </style>
         </head>
         <body>
           <h1>${venue.name}</h1>
           <p>Quet ma QR de mo trang quan va nghe audio huong dan</p>
-          <img src="${qrUrl}" alt="QR ${venue.name}" />
+          <img id="print-qr-image" src="${qrUrl}" alt="QR ${venue.name}" />
           <div class="url">${landingUrl}</div>
+          <div id="print-hint" class="hint" style="display:none;">Khong tai duoc anh QR, vui long in lai sau.</div>
+
+          <script>
+            (function () {
+              const img = document.getElementById("print-qr-image");
+              const hint = document.getElementById("print-hint");
+              let hasPrinted = false;
+
+              const doPrint = () => {
+                if (hasPrinted) return;
+                hasPrinted = true;
+                window.focus();
+                window.print();
+              };
+
+              img.addEventListener("load", () => {
+                // Give the browser a tick to fully paint before opening print dialog.
+                setTimeout(doPrint, 120);
+              });
+
+              img.addEventListener("error", () => {
+                hint.style.display = "block";
+                setTimeout(doPrint, 120);
+              });
+
+              // Fallback in case load/error events do not fire (slow or blocked network).
+              setTimeout(doPrint, 2000);
+            })();
+          </script>
         </body>
       </html>
     `);
     printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
   };
 
   const dailyTraffic = stats?.dailyTraffic || [
