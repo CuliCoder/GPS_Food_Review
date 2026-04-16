@@ -128,9 +128,17 @@ export default function MapPage() {
         <button
           aria-label="Close venue list"
           onClick={() => setSidebarOpen(false)}
-          className="absolute inset-0 z-10 bg-black/35"
+          className="absolute inset-0 z-[900] bg-black/35"
         />
       )}
+
+      <button
+        onClick={() => setSidebarOpen(!sidebarOpen)}
+        className="absolute left-4 top-[max(1rem,env(safe-area-inset-top))] z-[1200] bg-white p-2.5 sm:p-3 rounded-xl shadow-lg border border-border hover:bg-slate-50 transition-colors touch-manipulation"
+        aria-label={sidebarOpen ? "Close menu" : "Open menu"}
+      >
+        <Menu className="w-5 h-5" />
+      </button>
 
       {/* Sidebar */}
       <AnimatePresence initial={false}>
@@ -144,7 +152,7 @@ export default function MapPage() {
               isMobile
                 ? "absolute left-0 top-0 h-full w-[88vw] max-w-[360px]"
                 : "h-full w-[360px]"
-            } bg-white shadow-2xl z-20 flex flex-col shrink-0 overflow-hidden`}>
+            } bg-white shadow-2xl z-[950] flex flex-col shrink-0 overflow-hidden`}>
             <div className="p-4 sm:p-5 bg-gradient-to-b from-primary/10 to-transparent border-b border-border/50 w-full">
               <div className="flex items-center justify-between mb-2">
                 <h1 className="text-xl font-bold text-foreground">Nearby Venues</h1>
@@ -225,11 +233,6 @@ export default function MapPage() {
 
       {/* Map */}
       <div className="flex-1 relative h-full">
-        <button onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="absolute left-4 top-[max(1rem,env(safe-area-inset-top))] z-[1000] bg-white p-2.5 sm:p-3 rounded-xl shadow-lg border border-border hover:bg-slate-50 transition-colors">
-          <Menu className="w-5 h-5" />
-        </button>
-
         <div className="absolute right-4 top-[max(1rem,env(safe-area-inset-top))] z-[1000] flex items-center gap-2">
           <div className="hidden sm:block">
             <LanguageSwitcher />
