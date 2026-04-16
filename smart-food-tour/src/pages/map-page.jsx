@@ -13,6 +13,7 @@ import {
 } from "@/lib/tts";
 import { ChatBox } from "@/components/chat-box";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { MapPin, Navigation, Star, ChevronRight, Menu, X, Volume2, VolumeX } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -64,7 +65,8 @@ function haversine(lat1, lng1, lat2, lng2) {
 
 export default function MapPage() {
   const { language, gpsPosition, setGpsPosition, playedVenues, markVenuePlayed } = useAppStore();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const isMobile = useIsMobile();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [playingVenueId, setPlayingVenueId] = useState(null);
 
   const { data: venues, isLoading } = useNearbyVenues(
@@ -116,20 +118,40 @@ export default function MapPage() {
     setPlayingVenueId(null);
   };
 
+  useEffect(() => {
+    setSidebarOpen(!isMobile);
+  }, [isMobile]);
+
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-background">
+    <div className="relative flex h-[100dvh] w-full overflow-hidden bg-background">
+      {isMobile && sidebarOpen && (
+        <button
+          aria-label="Close venue list"
+          onClick={() => setSidebarOpen(false)}
+          className="absolute inset-0 z-10 bg-black/35"
+        />
+      )}
+
       {/* Sidebar */}
       <AnimatePresence initial={false}>
         {sidebarOpen && (
           <motion.div key="sidebar"
-            initial={{ width: 0, opacity: 0 }} animate={{ width: 360, opacity: 1 }} exit={{ width: 0, opacity: 0 }}
+            initial={isMobile ? { x: -360, opacity: 0 } : { width: 0, opacity: 0 }}
+            animate={isMobile ? { x: 0, opacity: 1 } : { width: 360, opacity: 1 }}
+            exit={isMobile ? { x: -360, opacity: 0 } : { width: 0, opacity: 0 }}
             transition={{ type: "tween", duration: 0.25 }}
-            className="h-full bg-white shadow-2xl z-20 flex flex-col shrink-0 overflow-hidden">
-            <div className="p-5 bg-gradient-to-b from-primary/10 to-transparent border-b border-border/50 min-w-[360px]">
+            className={`${
+              isMobile
+                ? "absolute left-0 top-0 h-full w-[88vw] max-w-[360px]"
+                : "h-full w-[360px]"
+            } bg-white shadow-2xl z-20 flex flex-col shrink-0 overflow-hidden`}>
+            <div className="p-4 sm:p-5 bg-gradient-to-b from-primary/10 to-transparent border-b border-border/50 w-full">
               <div className="flex items-center justify-between mb-2">
                 <h1 className="text-xl font-bold text-foreground">Nearby Venues</h1>
                 <div className="flex items-center gap-2">
-                  <LanguageSwitcher />
+                  <div className="hidden sm:block">
+                    <LanguageSwitcher />
+                  </div>
                   <button onClick={() => setSidebarOpen(false)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">
                     <X className="w-4 h-4" />
                   </button>
@@ -140,7 +162,7 @@ export default function MapPage() {
                 Click map to move your location
               </p>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 min-w-[360px]">
+            <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 w-full">
               {isLoading
                 ? [1, 2, 3, 4].map(i => (
                     <div key={i} className="animate-pulse flex gap-4 bg-muted/30 p-3 rounded-2xl">
@@ -204,15 +226,18 @@ export default function MapPage() {
       {/* Map */}
       <div className="flex-1 relative h-full">
         <button onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="absolute top-5 left-5 z-[1000] bg-white p-3 rounded-xl shadow-lg border border-border hover:bg-slate-50 transition-colors">
+          className="absolute left-4 top-[max(1rem,env(safe-area-inset-top))] z-[1000] bg-white p-2.5 sm:p-3 rounded-xl shadow-lg border border-border hover:bg-slate-50 transition-colors">
           <Menu className="w-5 h-5" />
         </button>
 
-        <div className="absolute top-5 right-5 z-[1000] flex items-center gap-2">
-          <LanguageSwitcher />
+        <div className="absolute right-4 top-[max(1rem,env(safe-area-inset-top))] z-[1000] flex items-center gap-2">
+          <div className="hidden sm:block">
+            <LanguageSwitcher />
+          </div>
           <Link href="/login">
-            <span className="bg-white shadow-md border border-gray-200 text-gray-700 hover:bg-orange-500 hover:text-white hover:border-orange-500 transition-colors text-xs font-semibold px-3 py-2 rounded-xl cursor-pointer flex items-center gap-1.5">
-              🏪 Chủ quán / Admin
+            <span className="bg-white shadow-md border border-gray-200 text-gray-700 hover:bg-orange-500 hover:text-white hover:border-orange-500 transition-colors text-xs font-semibold px-2.5 sm:px-3 py-2 rounded-xl cursor-pointer flex items-center gap-1.5">
+              <span className="sm:hidden">🏪 Admin</span>
+              <span className="hidden sm:inline">🏪 Chủ quán / Admin</span>
             </span>
           </Link>
         </div>
@@ -224,7 +249,7 @@ export default function MapPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 20 }}
-              className="absolute bottom-24 left-1/2 -translate-x-1/2 z-[1000] bg-white border border-primary/30 rounded-2xl shadow-xl px-4 py-3 flex items-center gap-3 max-w-xs w-[90%]"
+              className="absolute bottom-[7.2rem] sm:bottom-24 left-1/2 -translate-x-1/2 z-[1000] bg-white border border-primary/30 rounded-2xl shadow-xl px-4 py-3 flex items-center gap-3 max-w-xs w-[90%]"
             >
               <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center shrink-0">
                 <Volume2 className="w-4 h-4 text-primary animate-pulse" />

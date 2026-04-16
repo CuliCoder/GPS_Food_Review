@@ -98,7 +98,7 @@ export function ChatBox() {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => setIsOpen(true)}
-            className="fixed bottom-6 right-6 w-14 h-14 bg-gradient-to-tr from-primary to-orange-400 text-white rounded-full shadow-xl shadow-primary/30 flex items-center justify-center z-[1000]"
+            className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 sm:bottom-6 sm:right-6 w-13 h-13 sm:w-14 sm:h-14 bg-gradient-to-tr from-primary to-orange-400 text-white rounded-full shadow-xl shadow-primary/30 flex items-center justify-center z-[1000]"
           >
             <MessageCircle className="w-6 h-6" />
           </motion.button>
@@ -112,7 +112,7 @@ export function ChatBox() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
             transition={{ duration: 0.2 }}
-            className="fixed bottom-6 right-6 w-[90vw] max-w-[360px] h-[550px] max-h-[80vh] bg-background border border-border rounded-2xl shadow-2xl z-[1000] flex flex-col overflow-hidden"
+            className="fixed left-2 right-2 bottom-[max(0.5rem,env(safe-area-inset-bottom))] h-[72vh] max-h-[520px] sm:left-auto sm:right-6 sm:bottom-6 sm:w-[90vw] sm:max-w-[360px] sm:h-[550px] sm:max-h-[80vh] bg-background border border-border rounded-2xl shadow-2xl z-[1000] flex flex-col overflow-hidden"
           >
             {/* Header */}
             <div className="bg-primary px-4 py-3 text-primary-foreground flex items-center justify-between shadow-md">
