@@ -61,6 +61,33 @@ Tài liệu này giải thích từng khối code làm gì và dữ liệu đi q
 - [api-server/src/routes/languages.js](api-server/src/routes/languages.js) trả 15 ngôn ngữ hỗ trợ.
 - [api-server/src/routes/health.js](api-server/src/routes/health.js) dùng cho health check.
 
+### Redis và xử lý concurrent audio
+
+- Redis được dùng theo hướng optional ở backend để hỗ trợ lock phân tán cho audio generation.
+- Cơ chế chính nằm trong [api-server/src/routes/audio.js](api-server/src/routes/audio.js).
+
+Chiến lược khi nhiều người cùng nghe một quán tại cùng thời điểm:
+
+1. Tạo cache key theo `venueId + lang + textHash` để xác định đúng file audio cần sinh.
+2. Kiểm tra file cache nếu đã tồn tại thì stream ngay, không generate lại.
+3. Nếu chưa có cache, backend thử lấy Redis lock bằng `SET key token NX PX`.
+4. Tiến trình lấy được lock sẽ là tiến trình duy nhất generate MP3.
+5. Các tiến trình khác chờ trong khoảng timeout và poll xem file cache đã xuất hiện chưa.
+6. Khi lock rơi hoặc tiến trình chính lỗi, tiến trình chờ có thể takeover lock và generate tiếp.
+7. Lock được release an toàn bằng Lua script để tránh xóa lock của tiến trình khác.
+
+Các biến cấu hình liên quan concurrent audio:
+
+- `AUDIO_LOCK_TTL_MS`: thời gian sống lock.
+- `AUDIO_WAIT_TIMEOUT_MS`: thời gian client request chờ file cache xuất hiện.
+- `AUDIO_POLL_INTERVAL_MS`: tần suất poll cache/lock khi đang chờ.
+
+Fallback khi không có Redis:
+
+- Backend vẫn generate theo cơ chế file cache cục bộ.
+- Có kiểm tra tồn tại file trước/sau generate để giảm khả năng tạo trùng.
+- Dù vậy, mức bảo vệ race condition sẽ thấp hơn lock phân tán Redis.
+
 ## 2. Dữ liệu chạy qua hệ thống như thế nào
 
 ### 2.1 Guest discovery flow
@@ -73,12 +100,27 @@ Tài liệu này giải thích từng khối code làm gì và dữ liệu đi q
 6. Khi venue nằm trong vùng audio, map page gọi [smart-food-tour/src/lib/tts.js](smart-food-tour/src/lib/tts.js) để phát audio từ [api-server/src/routes/audio.js](api-server/src/routes/audio.js).
 7. Người dùng mở [smart-food-tour/src/pages/venue-detail.jsx](smart-food-tour/src/pages/venue-detail.jsx) để xem menu, review, respect và QR.
 
+Quy tắc khi cùng lúc lọt vào phạm vi nhiều quán:
+
+- `venues/nearby` được backend sort theo khoảng cách tăng dần.
+- Frontend lấy quán đầu tiên trong danh sách `withinAudioRadius` chưa phát để trigger audio.
+- Kết quả: quán gần nhất sẽ được ưu tiên phát trước.
+- Nếu đang phát một quán, audio chỉ dừng khi ra khỏi `audioRadius` hoặc track hiện tại kết thúc.
+
 ### 2.2 Review and reaction flow
 
 1. Frontend gửi review qua `useCreateVenueReview()`.
 2. `api.js` tự gắn `x-guest-token` bằng localStorage token riêng cho khách.
 3. Backend trong [api-server/src/routes/venues.js](api-server/src/routes/venues.js) kiểm tra rate limit, spam pattern và duplicate review.
 4. Review hợp lệ sẽ được lưu vào POI và frontend invalidate cache để hiển thị lại.
+
+Ghi chú: luồng review này không bắt buộc đăng nhập, người dùng ẩn danh vẫn gửi bình luận được qua `x-guest-token`.
+
+QR scan để nghe audio:
+
+- Mỗi POI có `landingUrl` và `landingQrImageUrl`.
+- User quét QR sẽ vào landing của quán đó.
+- Từ landing/venue detail, user có thể kích hoạt nghe audio guide của quán tương ứng.
 
 ### 2.3 Vendor onboarding flow
 
