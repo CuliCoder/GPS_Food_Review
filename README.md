@@ -1,88 +1,119 @@
-# 🚀 Smart Tourism Web Application
+# Smart Food Tour
 
-Đây là hướng dẫn chi tiết để thiết lập và khởi chạy dự án **Smart Tourism Web Application** trên môi trường local. Dự án bao gồm hai phần chính: **Backend (BE)** và **Frontend (FE)**.
+Smart Food Tour là ứng dụng du lịch ẩm thực đa ngôn ngữ gồm frontend React/Vite và backend Express/MongoDB. Ứng dụng cho phép khách du lịch chọn ngôn ngữ, khám phá điểm ăn uống trên bản đồ, nghe thuyết minh audio, chat AI gợi ý địa điểm, đánh giá quán và thanh toán VNPay cho luồng đăng ký quán của vendor.
 
-## 📋 Yêu cầu tiên quyết
+## Tổng quan kiến trúc
 
-Trước khi bắt đầu, hãy đảm bảo máy tính của bạn đã cài đặt:
-* [Node.js](https://nodejs.org/) (Phiên bản LTS)
-* [npm](https://www.npmjs.com/) (Thường đi kèm với Node.js)
-* [MongoDB](https://www.mongodb.com/) (Hoặc cơ sở dữ liệu tương ứng)
+- Frontend: React 18, Vite, Tailwind CSS, Zustand, React Query, Wouter, Leaflet, Framer Motion.
+- Backend: Express 5, MongoDB/Mongoose, Redis tùy chọn, OpenRouter chatbot, gTTS audio, VNPay payment.
+- Dữ liệu cốt lõi: POI/quán, user, payment, audio stat.
 
----
+## Cấu trúc thư mục
 
-## 🛠 Hướng dẫn cài đặt
+```text
+smart-food-tour/
+	src/
+		App.jsx            # Router + providers
+		main.jsx           # Entry point React
+		index.css          # Theme + global styles
+		store/             # Zustand app state
+		lib/               # API client, TTS, utils
+		components/        # Chat box, language switcher, UI primitives
+		pages/             # Language select, map, venue detail, auth, vendor/admin dashboards, payment pages
 
-### 1. Tải mã nguồn
-```bash
-git clone <url-repository-cua-ban>
-cd <ten-thu-muc-du-an>
+api-server/
+	src/
+		app.js             # Express app bootstrap
+		index.js           # Server start + DB connect
+		routes/            # REST endpoints
+		models/            # Mongoose schemas
+		middleware/        # Auth, guest tracking
+		lib/               # Redis/online guest helpers
+		data/              # Seed data
 ```
 
-### 2. Cấu hình và Chạy Backend (BE)
+## Tính năng chính
 
-Di chuyển vào thư mục backend:
-```bash
-cd backend
-```
+- Chọn ngôn ngữ giao diện và nội dung thuyết minh.
+- Xem bản đồ, lọc quán gần vị trí giả lập của người dùng, mở chi tiết quán.
+- Phát audio tự động theo khoảng cách, dừng khi rời khỏi vùng kích hoạt.
+- Chat AI gợi ý quán theo nhu cầu như gần nhất, chay, rẻ, đang mở.
+- Khách lẻ có thể yêu thích, quét QR, gửi review với guest token.
+- Vendor đăng nhập, nộp quán mới, thanh toán VNPay cho phí đăng ký, quản lý POI.
+- Admin duyệt/từ chối POI, quản lý user, xem thống kê toàn hệ thống.
 
-**Cài đặt thư viện:**
+## Chạy dự án
+
+### Backend
+
 ```bash
+cd api-server
 npm install
 ```
 
-**Cấu hình môi trường:**
-1. Tìm file `.env.example` trong thư mục backend.
-2. Tạo một file mới tên là `.env`.
-3. Sao chép nội dung từ `.env.example` sang `.env` và cập nhật các thông số kết nối Database (DB) mẫu.
+Tạo file `.env` và cấu hình tối thiểu:
 
-**Khởi tạo dữ liệu (Seed DB):**
-Sau khi đã kết nối Database thành công, chạy lệnh sau để nạp dữ liệu mẫu:
+```bash
+PORT=5000
+MONGODB_URI=...
+JWT_SECRET=...
+FRONTEND_URL=http://localhost:5173
+BACKEND_URL=http://localhost:5000
+VNPAY_TMN_CODE=...
+VNPAY_HASH_SECRET=...
+VNPAY_URL=https://sandbox.vnpayment.vn
+OPENROUTER_API_KEY=...
+```
+
+Chạy server:
+
+```bash
+npm run dev
+```
+
+Seed dữ liệu mẫu:
+
 ```bash
 npm run seed
 ```
 
-**Khởi chạy Server:**
+### Frontend
+
 ```bash
-npm run start
-```
-*Server mặc định chạy tại: `http://localhost:5000`.*
-
----
-
-### 3. Cấu hình và Chạy Frontend (FE)
-
-Mở một terminal mới và di chuyển vào thư mục frontend:
-```bash
-cd frontend
-```
-
-**Cài đặt thư viện:**
-```bash
+cd smart-food-tour
 npm install
-```
-
-**Khởi chạy ứng dụng:**
-```bash
 npm run dev
 ```
-*Ứng dụng mặc định chạy tại: `http://localhost:5173` (Vite) hoặc `http://localhost:3000` (CRA).*
 
----
+Build production:
 
-## 📖 Cấu trúc lệnh quan trọng
+```bash
+npm run build
+```
 
-| Thư mục | Lệnh | Tác dụng |
-| :--- | :--- | :--- |
-| **Backend** | `npm install` | Cài đặt các dependencies cho BE |
-| **Backend** | `npm run seed` | Khởi tạo dữ liệu mẫu vào database |
-| **Backend** | `npm run start` | Chạy server production/development |
-| **Frontend** | `npm install` | Cài đặt các dependencies cho FE |
-| **Frontend** | `npm run dev` | Chạy giao diện ở chế độ development |
+## Tài khoản mẫu
 
----
+- Admin: `admin@smartfoodtour.vn` / `Admin@123`
+- Vendor: `phohanoi@gmail.com` / `Vendor@123`
+- Member: `user@example.com` / `User@123`
 
-## 💡 Lưu ý
-* Đảm bảo Database đã được bật trước khi chạy lệnh `npm run seed`.
-* Kiểm tra kỹ các biến môi trường trong file `.env` để tránh lỗi kết nối.
-* Dự án hỗ trợ đa ngôn ngữ (TTS) và Chatbot AI, vui lòng kiểm tra API key trong file `.env` nếu có.
+## Luồng vận hành ngắn gọn
+
+1. Người dùng vào trang chọn ngôn ngữ.
+2. Vào bản đồ, chọn địa điểm hoặc mở chi tiết quán.
+3. Khi ở gần quán, audio thuyết minh được phát từ backend gTTS.
+4. Người dùng có thể chat AI, xem menu, đánh giá, quét QR.
+5. Vendor đăng nhập, tạo quán mới, thanh toán VNPay, chờ admin duyệt.
+6. Admin duyệt quán để POI xuất hiện cho khách du lịch.
+
+## Tài liệu đi kèm
+
+- [PRD.md](PRD.md)
+- [CODE_MAP_AND_FLOW.md](CODE_MAP_AND_FLOW.md)
+
+## Ghi chú kỹ thuật
+
+- FE dùng `src/lib/api.js` làm API client chính.
+- FE tự lưu auth vào `localStorage` để phục vụ dashboard, nhưng state chính vẫn nằm trong Zustand.
+- Backend yêu cầu `Authorization: Bearer <token>` cho các route vendor/admin và payment.
+- Audio, chatbot, và thanh toán đều là các nhánh độc lập, nên lỗi ở một nhánh không làm sập toàn hệ thống.
