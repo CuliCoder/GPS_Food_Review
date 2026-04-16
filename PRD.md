@@ -160,11 +160,16 @@ Hệ thống phát audio thuyết minh cho quán khi người dùng tiến vào 
 - Audio chỉ phát một lần cho mỗi venue trong một session.
 - Khi user ra khỏi bán kính thì audio dừng.
 - Khi browser chặn autoplay, app phải unlock audio sau tương tác đầu tiên.
+- Khi nhiều user cùng nghe 1 quán, backend chỉ nên sinh 1 bản audio và các request còn lại dùng lại cache.
+- Khi user đứng trong phạm vi của nhiều quán cùng lúc, hệ thống phải có quy tắc ưu tiên rõ ràng.
 
 #### Acceptance criteria
 - Vào vùng kích hoạt thì audio tự chạy.
 - Ra khỏi vùng thì audio dừng ngay.
 - Reload page không bị autoplay crash.
+- Trong tình huống nhiều request đồng thời cho cùng `venueId + lang`, hệ thống không phát sinh nhiều tiến trình generate MP3 giống nhau.
+- Nếu đồng thời nằm trong phạm vi 2 quán, hệ thống ưu tiên quán gần nhất (dựa trên danh sách nearby đã sort theo distance).
+- Nếu đang phát quán A thì không tự nhảy sang quán B cho đến khi quán A ra khỏi phạm vi hoặc phát xong.
 
 ### FR4 - Chat AI gợi ý địa điểm
 
@@ -203,13 +208,16 @@ Khách du lịch có thể tương tác nhẹ với quán bằng review, respect
 
 #### Hành vi mong đợi
 - Review dùng guest token để phân biệt người dùng ẩn danh.
+- Review không yêu cầu đăng nhập tài khoản (anonymous comment bằng guest token).
 - Review có chống spam cơ bản: rate limit, blocked words, duplicate check.
 - Respect tăng bộ đếm yêu thích.
 - QR tap tăng thống kê tương tác.
+- QR quét phải mở được trang quán để người dùng có thể bấm nghe audio ngay.
 
 #### Acceptance criteria
 - Người dùng ẩn danh vẫn gửi review được.
 - Review chứa link hoặc từ cấm bị từ chối.
+- QR landing hợp lệ phải dẫn về ngữ cảnh quán tương ứng và cho phép nghe audio guide.
 
 ### FR7 - Vendor đăng ký và thanh toán
 
@@ -264,10 +272,12 @@ Admin có dashboard tổng hợp số liệu vận hành.
 - Thống kê total venues, total vendors, pending approvals, total audio plays, online users, online guests.
 - Danh sách user cho phép đổi status.
 - Báo cáo hiển thị theo thời gian và danh mục.
+- Chỉ số online phải có định nghĩa thống nhất theo cửa sổ thời gian.
 
 #### Acceptance criteria
 - Admin thấy số liệu hợp lệ theo dữ liệu hiện tại.
 - Chuyển trạng thái user cập nhật ngay trong danh sách.
+- `onlineUsers` được tính từ `lastSeenAt` trong cửa sổ cấu hình (mặc định 5 phút), `onlineGuests` lấy từ Redis online guest tracking.
 
 ## 8. Yêu cầu dữ liệu
 
@@ -372,12 +382,14 @@ Trường chính:
 - Map query phải chỉ lấy dữ liệu cần thiết.
 - Audio file phải cache để tránh generate lặp.
 - Chat request nên giới hạn history để prompt không quá dài.
+- Với production, nên bật Redis để khóa phân tán audio generation khi tải đồng thời cao.
 
 ### 9.4 Tính ổn định
 
 - Nếu OpenRouter lỗi, chat vẫn phải trả fallback content.
 - Nếu gTTS hoặc audio cache lỗi, hệ thống vẫn phải không làm hỏng giao diện chính.
 - Nếu VNPay chưa cấu hình đủ, payment phải trả lỗi rõ ràng.
+- Nếu request audio cạnh tranh lock quá lâu, hệ thống phải trả lỗi tạm thời rõ ràng để client retry.
 
 ### 9.5 Chống spam và kiểm soát dữ liệu
 
@@ -398,6 +410,7 @@ Trường chính:
 7. Nếu quán nằm trong bán kính audio, audio tự phát.
 8. User mở chi tiết quán để xem thêm thông tin.
 9. User có thể xem review, nhấn respect, quét QR hoặc chat AI.
+10. Nếu user đứng trong vùng overlap của nhiều quán, app ưu tiên phát audio quán gần nhất trước.
 
 ### 10.2 Vendor onboarding
 
@@ -418,6 +431,14 @@ Trường chính:
 4. Admin duyệt hoặc từ chối POI.
 5. Nếu duyệt thì POI xuất hiện trên map guest.
 6. Nếu từ chối thì POI lưu lý do từ chối để vendor biết chỉnh sửa.
+
+### 10.4 QR scan nghe audio
+
+1. User quét QR của quán.
+2. QR mở `landingUrl` của quán trên web app.
+3. User vào trang chi tiết quán hoặc map context của quán đó.
+4. User bấm audio guide hoặc vào vùng audio để nghe thuyết minh.
+5. Hệ thống ghi nhận `qrTap` để phục vụ thống kê.
 
 ## 11. Chỉ số thành công
 
