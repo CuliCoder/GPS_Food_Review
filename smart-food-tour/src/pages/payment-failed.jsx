@@ -63,7 +63,7 @@ export default function PaymentFailedPage() {
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-3">
             <p className="font-semibold text-gray-900 text-sm">Có thể do:</p>
             <ul className="text-sm text-gray-700 space-y-2">
-              <li>• Số dư tài khoản não đủ</li>
+              <li>• Số dư tài khoản không đủ</li>
               <li>• Thẻ/tài khoản đã hết hạn</li>
               <li>• Tài khoản bị khóa hoặc hạn chế</li>
               <li>• Nhập sai thông tin thanh toán</li>
