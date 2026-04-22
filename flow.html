@@ -320,6 +320,7 @@
       .hero, .grid { grid-template-columns: 1fr; }
       .sidebar { position: static; }
       .diagram { min-width: 900px; }
+      .detail-grid { grid-template-columns: 1fr; }
     }
 
     @media (max-width: 720px) {
@@ -358,6 +359,58 @@
     .msg-text.req { fill: #7dd3fc; }
     .msg-text.res { fill: #86efac; }
     .msg-text.note { fill: #fde68a; }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .detail-card {
+      border-radius: 20px;
+      padding: 16px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.04);
+    }
+
+    .detail-card h3 {
+      margin: 0 0 8px;
+      font-size: 16px;
+    }
+
+    .detail-card p {
+      margin: 0 0 10px;
+      color: #cbd5e1;
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .detail-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .detail-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #93c5fd;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .detail-link:hover { text-decoration: underline; }
+
+    .fn-list {
+      margin: 0;
+      padding-left: 18px;
+      color: #dbeafe;
+      font-size: 13px;
+      line-height: 1.75;
+    }
   </style>
 </head>
 <body>
@@ -400,6 +453,9 @@
         <p class="note">
           Nếu muốn tôi có thể tách tiếp thành sơ đồ riêng cho từng màn hoặc xuất sang PDF sau.
         </p>
+        <p class="note" style="margin-top: 8px;">
+          Tài liệu chi tiết: <a href="SEQUENCE_DIAGRAMS.md" target="_blank" rel="noreferrer" style="color:#93c5fd;text-decoration:underline;">SEQUENCE_DIAGRAMS.md</a> và <a href="CODE_MAP_AND_FLOW.md" target="_blank" rel="noreferrer" style="color:#93c5fd;text-decoration:underline;">CODE_MAP_AND_FLOW.md</a>
+        </p>
       </div>
     </div>
 
@@ -438,6 +494,8 @@
             <li>Guest: chọn ngôn ngữ → map → nearby venues → venue detail.</li>
             <li>Vendor: login → payment VNPay → tạo POI → chờ admin duyệt.</li>
             <li>Audio: map click → nearby venues → audio stream → auto play.</li>
+            <li>Online guests: request public API → middleware track guest → admin stats đọc onlineGuests.</li>
+            <li>Redis: audio lock/cache, review rate-limit/dedup, online guest count.</li>
           </ul>
         </div>
 
@@ -446,6 +504,9 @@
           <p class="note">
             Nội dung diagram bám theo code hiện tại: `src/pages/map-page.jsx`, `src/pages/venue-detail.jsx`,
             `src/pages/vendor-dashboard.jsx`, `src/pages/admin-dashboard.jsx`, `api-server/src/routes/*.js`.
+          </p>
+          <p class="note" style="margin-top: 10px;">
+            Sơ đồ tuần tự chi tiết được tách riêng ở <a href="SEQUENCE_DIAGRAMS.md" target="_blank" rel="noreferrer" style="color:#93c5fd;text-decoration:underline;">SEQUENCE_DIAGRAMS.md</a> để mở nhanh khi cần tra function/route.
           </p>
         </div>
       </div>
@@ -564,6 +625,271 @@
           { from: 1, to: 1, type: "note", text: "stopAudioTranscript()" },
         ],
       },
+      {
+        title: "Audio Redis lock",
+        badge: "Redis",
+        desc: "Khi nhiều người cùng gọi /api/audio/:venueId, Redis lock bảo vệ việc sinh MP3, tránh tạo file trùng và cho phép takeover nếu worker khác đang giữ lock.",
+        actors: [
+          { label: "User", sub: "U" },
+          { label: "Audio Route", sub: "R" },
+          { label: "Redis", sub: "D" },
+          { label: "gTTS", sub: "T" },
+          { label: "Cache File", sub: "C" },
+        ],
+        messages: [
+          { from: 0, to: 1, type: "req", text: "GET /api/audio/:venueId?lang=" },
+          { from: 1, to: 4, type: "req", text: "Check MP3 cache path" },
+          { from: 4, to: 1, type: "res", text: "Cache hit -> serveAudioFile()" },
+          { from: 1, to: 2, type: "req", text: "SET lockKey token NX PX" },
+          { from: 2, to: 1, type: "res", text: "OK / null" },
+          { from: 1, to: 3, type: "req", text: "generateAudioFileWithRetry()" },
+          { from: 3, to: 4, type: "res", text: "Write MP3 cache" },
+          { from: 1, to: 2, type: "req", text: "EVAL release only if token match" },
+          { from: 1, to: 0, type: "res", text: "Serve audio/mpeg" },
+        ],
+      },
+      {
+        title: "Review anti-spam",
+        badge: "Redis",
+        desc: "Khi submit review, backend dùng Redis để giới hạn số review theo giờ và chặn review trùng trong một khoảng thời gian.",
+        actors: [
+          { label: "User", sub: "U" },
+          { label: "Venue Detail", sub: "V" },
+          { label: "Review API", sub: "R" },
+          { label: "Redis", sub: "D" },
+          { label: "MongoDB", sub: "M" },
+        ],
+        messages: [
+          { from: 0, to: 1, type: "req", text: "Submit review" },
+          { from: 1, to: 2, type: "req", text: "POST /api/venues/:id/reviews" },
+          { from: 2, to: 3, type: "req", text: "INCR reviews:hourly:*" },
+          { from: 3, to: 2, type: "res", text: "count <= max / too many" },
+          { from: 2, to: 3, type: "req", text: "SET reviews:dup:* NX EX" },
+          { from: 3, to: 2, type: "res", text: "allow / duplicate" },
+          { from: 2, to: 4, type: "req", text: "Save review + recalc rating" },
+          { from: 4, to: 2, type: "res", text: "Review persisted" },
+          { from: 2, to: 0, type: "res", text: "201 / 429 / 409" },
+        ],
+      },
+      {
+        title: "Online guest count",
+        badge: "Realtime",
+        desc: "Guest gọi endpoint public sẽ được middleware ghi nhận online. Admin dashboard gọi /admin/stats để hiển thị số khách online trong cửa sổ 5 phút.",
+        actors: [
+          { label: "Guest User", sub: "G" },
+          { label: "Public API", sub: "P" },
+          { label: "trackGuestOnline", sub: "M" },
+          { label: "Redis/Memory", sub: "R" },
+          { label: "AdminDashboard", sub: "D" },
+          { label: "Admin Stats API", sub: "A" },
+        ],
+        messages: [
+          { from: 0, to: 1, type: "req", text: "GET /api/venues|audio|chat|languages" },
+          { from: 1, to: 2, type: "req", text: "trackGuestOnline(req)" },
+          { from: 2, to: 3, type: "req", text: "ZADD fingerprint + lastSeen" },
+          { from: 2, to: 3, type: "req", text: "ZREMRANGEBYSCORE old entries" },
+          { from: 1, to: 0, type: "res", text: "Trả dữ liệu endpoint public" },
+          { from: 4, to: 5, type: "req", text: "GET /api/admin/stats (30s/refetch)" },
+          { from: 5, to: 3, type: "req", text: "getOnlineGuestCount()" },
+          { from: 3, to: 5, type: "res", text: "zcard(online:guests)" },
+          { from: 5, to: 4, type: "res", text: "{ onlineGuests, ...stats }" },
+          { from: 4, to: 4, type: "note", text: "Hiển thị stat card Khách du lịch online" },
+        ],
+      },
+      {
+        title: "Admin stats overview",
+        badge: "Stats",
+        desc: "Dashboard admin lấy toàn bộ thống kê từ /api/admin/stats, gồm tổng lượt nghe, top ngôn ngữ, và các metric tổng quan khác.",
+        actors: [
+          { label: "AdminDashboard", sub: "D" },
+          { label: "useAdminStats", sub: "H" },
+          { label: "apiFetch", sub: "F" },
+          { label: "GET /api/admin/stats", sub: "A" },
+          { label: "Auth Route", sub: "R" },
+          { label: "AudioStat + Query", sub: "Q" },
+        ],
+        messages: [
+          { from: 0, to: 1, type: "req", text: "Mount dashboard / refetch 30s" },
+          { from: 1, to: 2, type: "req", text: "apiFetch('/admin/stats')" },
+          { from: 2, to: 3, type: "req", text: "GET /api/admin/stats" },
+          { from: 3, to: 4, type: "req", text: "requireAuth + requireRole(admin)" },
+          { from: 4, to: 5, type: "req", text: "countDocuments + aggregate topLanguages" },
+          { from: 5, to: 4, type: "res", text: "totalAudioPlays, topLanguages, onlineGuests" },
+          { from: 4, to: 3, type: "res", text: "stats payload" },
+          { from: 3, to: 2, type: "res", text: "JSON data" },
+          { from: 2, to: 1, type: "res", text: "stats object" },
+          { from: 1, to: 0, type: "res", text: "Render Tổng lượt nghe + Top ngôn ngữ" },
+        ],
+      },
+      {
+        title: "Chi tiết tuần tự",
+        badge: "Detail",
+        desc: "Tổng hợp các luồng quan trọng dưới dạng thẻ để mở nhanh đúng function, route và tài liệu chi tiết.",
+        kind: "detail",
+        sections: [
+          {
+            title: "Guest discovery",
+            summary: "Chọn ngôn ngữ, vào bản đồ, click map, lấy nearby venues và mở venue detail.",
+            actors: [
+              { label: "User", sub: "U" },
+              { label: "LanguageSelect", sub: "L" },
+              { label: "MapPage", sub: "M" },
+              { label: "Nearby API", sub: "A" },
+              { label: "Venue Detail", sub: "V" },
+            ],
+            messages: [
+              { from: 0, to: 1, type: "req", text: "Chọn ngôn ngữ" },
+              { from: 1, to: 2, type: "req", text: "setLanguage(code)" },
+              { from: 2, to: 3, type: "req", text: "useNearbyVenues(lat,lng,lang)" },
+              { from: 3, to: 2, type: "res", text: "nearby venues" },
+              { from: 2, to: 4, type: "req", text: "Mở /venue/:id" },
+              { from: 4, to: 0, type: "res", text: "Hiển thị chi tiết quán" },
+            ],
+            functions: [
+              "LanguageSelect.handleSelect",
+              "MapPage useEffect",
+              "useNearbyVenues",
+              "router.get(\"/venues/nearby\")",
+            ],
+            linkLabel: "Mở SEQUENCE_DIAGRAMS.md",
+            linkHref: "SEQUENCE_DIAGRAMS.md",
+          },
+          {
+            title: "Audio autoplay",
+            summary: "Map click unlock audio, tính khoảng cách, lấy audio URL và stream MP3 từ backend.",
+            actors: [
+              { label: "User", sub: "U" },
+              { label: "MapPage", sub: "M" },
+              { label: "Store", sub: "S" },
+              { label: "Audio API", sub: "B" },
+              { label: "gTTS", sub: "T" },
+            ],
+            messages: [
+              { from: 0, to: 1, type: "req", text: "Click map" },
+              { from: 1, to: 2, type: "req", text: "setGpsPosition(lat,lng)" },
+              { from: 1, to: 3, type: "req", text: "GET /api/audio/:venueId?lang=" },
+              { from: 3, to: 4, type: "req", text: "generate / read cached MP3" },
+              { from: 4, to: 3, type: "res", text: "audio stream" },
+              { from: 3, to: 1, type: "res", text: "audio/mpeg bytes" },
+              { from: 1, to: 0, type: "res", text: "autoplay guide" },
+            ],
+            functions: [
+              "unlockAudio",
+              "playAudioFromUrl",
+              "router.get(\"/:venueId\")",
+              "waitForAudioCacheOrTakeover",
+            ],
+            linkLabel: "Mở SEQUENCE_DIAGRAMS.md",
+            linkHref: "SEQUENCE_DIAGRAMS.md",
+          },
+          {
+            title: "Venue detail interactions",
+            summary: "Audio guide, respect, QR tap và review đều đi qua các hook chuyên biệt.",
+            actors: [
+              { label: "User", sub: "U" },
+              { label: "VenueDetail", sub: "V" },
+              { label: "Hooks", sub: "H" },
+              { label: "Venues API", sub: "A" },
+            ],
+            messages: [
+              { from: 0, to: 1, type: "req", text: "Open venue detail" },
+              { from: 1, to: 2, type: "req", text: "useVenueDetail / useRespect / useQrTap" },
+              { from: 2, to: 3, type: "req", text: "GET /api/venues/:id" },
+              { from: 3, to: 2, type: "res", text: "venue detail" },
+              { from: 0, to: 1, type: "req", text: "Audio / Respect / QR / Review" },
+              { from: 1, to: 3, type: "req", text: "POST /respect /qr-tap /reviews" },
+            ],
+            functions: [
+              "VenueDetail.handlePlayAudio",
+              "handleRespect",
+              "handleQrTap",
+              "handleSubmitReview",
+            ],
+            linkLabel: "Mở SEQUENCE_DIAGRAMS.md",
+            linkHref: "SEQUENCE_DIAGRAMS.md",
+          },
+          {
+            title: "Vendor payment flow",
+            summary: "Vendor tạo order VNPay, quay về dashboard, rồi tạo POI với paymentId hợp lệ.",
+            actors: [
+              { label: "Vendor", sub: "U" },
+              { label: "VendorDashboard", sub: "D" },
+              { label: "Payment API", sub: "P" },
+              { label: "VNPay", sub: "V" },
+              { label: "POI API", sub: "R" },
+            ],
+            messages: [
+              { from: 0, to: 1, type: "req", text: "Submit registration form" },
+              { from: 1, to: 2, type: "req", text: "POST /payment/create-order" },
+              { from: 2, to: 3, type: "req", text: "buildPaymentUrl()" },
+              { from: 3, to: 1, type: "res", text: "Redirect to VNPay" },
+              { from: 3, to: 1, type: "res", text: "return / IPN callback" },
+              { from: 1, to: 4, type: "req", text: "POST /pois with paymentId" },
+              { from: 4, to: 0, type: "res", text: "POI pending" },
+            ],
+            functions: [
+              "VendorDashboard.handleRegister",
+              "useCreatePayment",
+              "router.post(\"/payment/create-order\")",
+              "router.post(\"/pois\")",
+            ],
+            linkLabel: "Mở SEQUENCE_DIAGRAMS.md",
+            linkHref: "SEQUENCE_DIAGRAMS.md",
+          },
+          {
+            title: "Auth and admin",
+            summary: "Login/registration phân nhánh sang dashboard, admin duyệt POI và quản lý user.",
+            actors: [
+              { label: "User", sub: "U" },
+              { label: "AuthPage", sub: "F" },
+              { label: "Auth API", sub: "A" },
+              { label: "AdminDashboard", sub: "D" },
+              { label: "Admin API", sub: "B" },
+            ],
+            messages: [
+              { from: 0, to: 1, type: "req", text: "Login / register" },
+              { from: 1, to: 2, type: "req", text: "POST /auth/login or /auth/register/vendor" },
+              { from: 2, to: 1, type: "res", text: "user + accessToken" },
+              { from: 1, to: 0, type: "res", text: "navigate dashboard" },
+              { from: 0, to: 3, type: "req", text: "Open admin dashboard" },
+              { from: 3, to: 4, type: "req", text: "PATCH /admin/pending/:id" },
+              { from: 4, to: 3, type: "res", text: "approve / reject / user status" },
+            ],
+            functions: [
+              "AuthPage.handleLogin",
+              "AuthPage.handleRegister",
+              "AdminDashboard.handleApprove",
+              "router.patch(\"/admin/pending/:id\")",
+            ],
+            linkLabel: "Mở SEQUENCE_DIAGRAMS.md",
+            linkHref: "SEQUENCE_DIAGRAMS.md",
+          },
+          {
+            title: "Code map reference",
+            summary: "Tài liệu map code gốc vẫn giữ vai trò chú giải để lần theo file và module nhanh nhất.",
+            actors: [
+              { label: "You", sub: "U" },
+              { label: "flow.html", sub: "F" },
+              { label: "CODE_MAP_AND_FLOW", sub: "C" },
+              { label: "SEQUENCE_DIAGRAMS", sub: "S" },
+            ],
+            messages: [
+              { from: 0, to: 1, type: "req", text: "Open flow tab" },
+              { from: 1, to: 2, type: "req", text: "Read code map" },
+              { from: 1, to: 3, type: "req", text: "Read detailed diagrams" },
+              { from: 2, to: 0, type: "res", text: "module / function map" },
+              { from: 3, to: 0, type: "res", text: "full sequence diagrams" },
+            ],
+            functions: [
+              "CODE_MAP_AND_FLOW.md",
+              "SEQUENCE_DIAGRAMS.md",
+              "flow.html",
+            ],
+            linkLabel: "Mở CODE_MAP_AND_FLOW.md",
+            linkHref: "CODE_MAP_AND_FLOW.md",
+          },
+        ],
+      },
     ];
 
     const tabsEl = document.getElementById("tabs");
@@ -571,6 +897,7 @@
     const descEl = document.getElementById("flowDesc");
     const badgeEl = document.getElementById("flowBadge");
     const diagramEl = document.getElementById("diagram");
+    let detailSectionIndex = 0;
 
     function escapeXml(value) {
       return String(value)
@@ -600,7 +927,118 @@
       return lines.slice(0, 2);
     }
 
+    function renderDetailSequence(flow) {
+      const section = flow.sections[detailSectionIndex] || flow.sections[0];
+
+      const actorCount = section.actors.length;
+      const width = Math.max(980, actorCount * 170 + 100);
+      const startX = 80;
+      const gapX = Math.floor((width - 2 * startX) / Math.max(actorCount - 1, 1));
+      const actorY = 46;
+      const actorBoxW = 110;
+      const actorBoxH = 40;
+      const lineTop = actorY + actorBoxH;
+      const msgStartY = 110;
+      const rowGap = 54;
+      const height = msgStartY + section.messages.length * rowGap + 44;
+      const xs = section.actors.map((_, index) => startX + index * gapX);
+      const pieces = [];
+
+      const renderSectionSvg = () => {
+        pieces.push(`<svg class="diagram-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(section.title)}">`);
+        pieces.push(`<defs>
+          <marker id="arrow-req" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L10,5 L0,10 z" fill="#7dd3fc"></path>
+          </marker>
+          <marker id="arrow-res" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L10,5 L0,10 z" fill="#86efac"></path>
+          </marker>
+          <marker id="arrow-note" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L10,5 L0,10 z" fill="#fde68a"></path>
+          </marker>
+        </defs>`);
+
+        xs.forEach((x, index) => {
+          const actor = section.actors[index];
+          pieces.push(`<rect x="${x - actorBoxW / 2}" y="${actorY}" width="${actorBoxW}" height="${actorBoxH}" rx="12" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.15)" />`);
+          pieces.push(`<text x="${x}" y="${actorY + 17}" text-anchor="middle" class="actor-label">${escapeXml(actor.label)}</text>`);
+          pieces.push(`<text x="${x}" y="${actorY + 31}" text-anchor="middle" class="actor-sub">${escapeXml(actor.sub || "")}</text>`);
+          pieces.push(`<line x1="${x}" y1="${lineTop}" x2="${x}" y2="${height - 18}" stroke="rgba(148,163,184,0.45)" stroke-width="1.4" stroke-dasharray="6 5" />`);
+        });
+
+        section.messages.forEach((msg, index) => {
+          const y = msgStartY + index * rowGap;
+          const fromX = xs[msg.from];
+          const toX = xs[msg.to];
+          const isSelf = msg.from === msg.to;
+          const color = msg.type === "req" ? "#7dd3fc" : msg.type === "res" ? "#86efac" : "#fde68a";
+
+          if (msg.type === "note") {
+            const x = fromX + 8;
+            pieces.push(`<rect x="${x}" y="${y - 15}" width="175" height="28" rx="10" fill="rgba(253,230,138,0.10)" stroke="rgba(253,230,138,0.55)" />`);
+            pieces.push(`<text x="${x + 11}" y="${y + 3}" class="msg-text note">${escapeXml(msg.text)}</text>`);
+            return;
+          }
+
+          if (isSelf) {
+            const loopX = fromX + 24;
+            pieces.push(`<path d="M ${fromX} ${y} L ${loopX} ${y} L ${loopX} ${y + 22} L ${fromX} ${y + 22}" fill="none" stroke="${color}" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#arrow-${msg.type})" />`);
+            const lines = wrapText(msg.text, 36);
+            lines.forEach((line, lineIndex) => {
+              pieces.push(`<text x="${loopX + 10}" y="${y + 9 + lineIndex * 13}" class="msg-text ${msg.type}">${escapeXml(line)}</text>`);
+            });
+            return;
+          }
+
+          const direction = toX > fromX ? 1 : -1;
+          const startXMsg = fromX + (direction * 24);
+          const endXMsg = toX - (direction * 24);
+          const marker = msg.type === "req" ? "arrow-req" : msg.type === "res" ? "arrow-res" : "arrow-note";
+          pieces.push(`<line x1="${startXMsg}" y1="${y}" x2="${endXMsg}" y2="${y}" stroke="${color}" stroke-width="2" stroke-dasharray="${msg.type === "req" ? "" : "7 4"}" marker-end="url(#${marker})" />`);
+
+          const textX = (startXMsg + endXMsg) / 2;
+          const lines = wrapText(msg.text, 30);
+          lines.forEach((line, lineIndex) => {
+            pieces.push(`<text x="${textX}" y="${y - 8 + lineIndex * 13}" text-anchor="middle" class="msg-text ${msg.type}">${escapeXml(line)}</text>`);
+          });
+        });
+
+        pieces.push(`</svg>`);
+        return pieces.join("");
+      };
+
+      const detailTabs = flow.sections.map((section, index) => `
+        <button class="tab ${index === detailSectionIndex ? "active" : ""}" data-detail-index="${index}">${escapeXml(section.title)}</button>
+      `).join("");
+
+      const fnList = section.functions.map((fn) => `<li>${escapeXml(fn)}</li>`).join("");
+
+      return `
+        <div style="display:grid; gap:14px;">
+          <div class="tab-bar" style="position: static; margin-bottom: 0;">
+            ${detailTabs}
+          </div>
+          <div class="detail-card">
+            <h3>${escapeXml(section.title)}</h3>
+            <p>${escapeXml(section.summary)}</p>
+            <div class="detail-meta">
+              <span class="badge">${escapeXml(flow.badge)}</span>
+              <a class="detail-link" href="${escapeXml(section.linkHref)}" target="_blank" rel="noreferrer">${escapeXml(section.linkLabel)}</a>
+            </div>
+            <div class="diagram-wrap" style="padding:10px;margin-bottom:12px;">
+              ${renderSectionSvg()}
+            </div>
+            <ul class="fn-list">${fnList}</ul>
+          </div>
+        </div>
+      `;
+    }
+
     function renderSequence(flow) {
+      if (flow.kind === "detail") {
+        return renderDetailSequence(flow);
+      }
+
       const actorCount = flow.actors.length;
       const width = Math.max(1200, actorCount * 190 + 120);
       const startX = 90;
@@ -688,6 +1126,13 @@
 
       document.querySelectorAll(".tab").forEach((tab, i) => {
         tab.classList.toggle("active", i === index);
+      });
+
+      diagramEl.querySelectorAll("[data-detail-index]").forEach((button) => {
+        button.addEventListener("click", () => {
+          detailSectionIndex = Number(button.getAttribute("data-detail-index")) || 0;
+          renderFlow(index);
+        });
       });
     }
 
